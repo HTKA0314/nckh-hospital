@@ -5,16 +5,12 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/Toast';
 import {
-  SlidersHorizontal,
   Save,
   Plus,
   Trash2,
   Pencil,
   Check,
   X,
-  Building2,
-  FileText,
-  ChevronRight,
   FolderKanban,
   ExternalLink,
 } from 'lucide-react';
@@ -31,7 +27,7 @@ export default function SettingsPage() {
   const [researchFields, setResearchFields] = useState([
     { id: '1', code: 'LÂM SÀNG',     name: 'Nghiên cứu Y học Lâm sàng & Can thiệp' },
     { id: '2', code: 'CẬN LÂM SÀNG', name: 'Nghiên cứu Cận lâm sàng & Chẩn đoán hình ảnh' },
-    { id: '3', code: 'DƯỢC',          name: 'Nghiên cứu Dược lâm sàng & Dược lý bệnh viện' },
+    { id: '3', code: 'DƯỢC',         name: 'Nghiên cứu Dược lâm sàng & Dược lý bệnh viện' },
     { id: '4', code: 'ĐIỀU DƯỠNG',   name: 'Nghiên cứu Chăm sóc & Điều dưỡng' },
     { id: '5', code: 'QUẢN LÝ Y TẾ', name: 'Nghiên cứu Quản lý Bệnh viện & Kinh tế Y tế' },
   ]);
@@ -84,14 +80,17 @@ export default function SettingsPage() {
     });
   };
 
+  const handleSaveAll = () => {
+    success('Đã lưu toàn bộ cấu hình danh mục hệ thống thành công!');
+  };
+
   // ── Khoa / Phòng từ repo ──
   const departments = repo.getDepartments();
 
   return (
     <div className="space-y-3 max-w-[1600px] mx-auto text-slate-800">
-      {/* ── Toolbar: Tabs + Actions trên 1 hàng đồng bộ ── */}
+      {/* ── Toolbar: Tabs + Actions ── */}
       <div className="flex flex-wrap items-center justify-between gap-2.5">
-        {/* Quick Tabs */}
         <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200/80 shadow-xs">
           {([
             { key: 'FIELDS', label: 'Lĩnh vực nghiên cứu' },
@@ -101,7 +100,7 @@ export default function SettingsPage() {
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
                 activeTab === t.key
                   ? 'bg-sky-50 text-[#0A6EBD] border border-sky-200 shadow-2xs'
                   : 'text-slate-600 hover:bg-slate-50 border border-transparent'
@@ -112,10 +111,6 @@ export default function SettingsPage() {
           ))}
         </div>
 
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Actions */}
         <div className="flex items-center gap-2">
           <Link
             href="/templates"
@@ -126,8 +121,8 @@ export default function SettingsPage() {
 
           {isAdmin && (
             <button
-              onClick={() => success('Đã lưu toàn bộ cấu hình danh mục hệ thống thành công!')}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0A6EBD] hover:bg-[#085896] text-white text-[13px] font-semibold shadow-xs transition whitespace-nowrap"
+              onClick={handleSaveAll}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0A6EBD] hover:bg-[#085896] text-white text-[13px] font-semibold shadow-xs transition whitespace-nowrap cursor-pointer"
             >
               <Save className="w-3.5 h-3.5" /> Lưu cấu hình
             </button>
@@ -143,14 +138,13 @@ export default function SettingsPage() {
             {isAdmin && (
               <button
                 onClick={() => setShowAddField(true)}
-                className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#0A6EBD] text-white rounded-lg text-xs font-semibold hover:bg-[#085896] transition shadow-xs"
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#0A6EBD] text-white rounded-lg text-xs font-semibold hover:bg-[#085896] transition shadow-xs cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" /> Thêm lĩnh vực mới
               </button>
             )}
           </div>
 
-          {/* Inline add form */}
           {showAddField && (
             <div className="flex items-center gap-2 p-3 bg-sky-50 border border-sky-200 rounded-lg animate-in fade-in">
               <input
@@ -158,26 +152,26 @@ export default function SettingsPage() {
                 placeholder="Mã VD: Y_HỌC_GEN"
                 value={newFieldCode}
                 onChange={(e) => setNewFieldCode(e.target.value)}
-                className="px-2.5 py-1.5 border border-slate-300 rounded text-xs w-36 outline-none focus:ring-1 focus:ring-[#0A6EBD]"
+                className="px-2.5 py-1.5 border border-slate-300 rounded text-xs w-36 outline-none focus:ring-1 focus:ring-[#0A6EBD] bg-white font-mono uppercase"
               />
               <input
                 type="text"
                 placeholder="Tên lĩnh vực nghiên cứu..."
                 value={newFieldName}
                 onChange={(e) => setNewFieldName(e.target.value)}
-                className="flex-1 px-2.5 py-1.5 border border-slate-300 rounded text-xs outline-none focus:ring-1 focus:ring-[#0A6EBD]"
+                className="flex-1 px-2.5 py-1.5 border border-slate-300 rounded text-xs outline-none focus:ring-1 focus:ring-[#0A6EBD] bg-white font-medium"
                 onKeyDown={(e) => e.key === 'Enter' && handleAddField()}
               />
               <button
                 onClick={handleAddField}
-                className="p-1.5 bg-[#0A6EBD] text-white rounded hover:bg-[#085896] transition"
+                className="p-1.5 bg-[#0A6EBD] text-white rounded hover:bg-[#085896] transition cursor-pointer"
                 title="Xác nhận thêm"
               >
                 <Check className="w-4 h-4" />
               </button>
               <button
                 onClick={() => { setShowAddField(false); setNewFieldCode(''); setNewFieldName(''); }}
-                className="p-1.5 bg-white border border-slate-300 text-slate-500 rounded hover:bg-slate-100 transition"
+                className="p-1.5 bg-white border border-slate-300 text-slate-500 rounded hover:bg-slate-100 transition cursor-pointer"
                 title="Hủy bỏ"
               >
                 <X className="w-4 h-4" />
@@ -187,7 +181,7 @@ export default function SettingsPage() {
 
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-600 font-semibold">
+              <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-600 font-semibold select-none">
                 <tr>
                   <th className="p-2.5 w-12 text-center">STT</th>
                   <th className="p-2.5 w-36">Mã định danh</th>
@@ -207,7 +201,7 @@ export default function SettingsPage() {
                           value={editFieldName}
                           onChange={(e) => setEditFieldName(e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && handleSaveEditField(f.id)}
-                          className="w-full px-2 py-1 border border-[#0A6EBD] rounded text-xs outline-none"
+                          className="w-full px-2 py-1 border border-[#0A6EBD] rounded text-xs outline-none bg-white font-medium"
                         />
                       ) : (
                         <span className="font-medium text-slate-900">{f.name}</span>
@@ -220,14 +214,14 @@ export default function SettingsPage() {
                             <>
                               <button
                                 onClick={() => handleSaveEditField(f.id)}
-                                className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
+                                className="p-1 text-emerald-600 hover:bg-emerald-50 rounded cursor-pointer"
                                 title="Lưu thay đổi"
                               >
                                 <Check className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 onClick={() => setEditFieldId(null)}
-                                className="p-1 text-slate-400 hover:bg-slate-100 rounded"
+                                className="p-1 text-slate-400 hover:bg-slate-100 rounded cursor-pointer"
                                 title="Hủy"
                               >
                                 <X className="w-3.5 h-3.5" />
@@ -237,14 +231,14 @@ export default function SettingsPage() {
                             <>
                               <button
                                 onClick={() => { setEditFieldId(f.id); setEditFieldName(f.name); }}
-                                className="p-1 text-slate-400 hover:text-[#0A6EBD] rounded opacity-0 group-hover:opacity-100 transition"
+                                className="p-1 text-slate-400 hover:text-[#0A6EBD] rounded opacity-0 group-hover:opacity-100 transition cursor-pointer"
                                 title="Sửa tên lĩnh vực"
                               >
                                 <Pencil className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 onClick={() => handleDeleteField(f.id, f.name)}
-                                className="p-1 text-slate-400 hover:text-rose-600 rounded opacity-0 group-hover:opacity-100 transition"
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded opacity-0 group-hover:opacity-100 transition cursor-pointer"
                                 title="Xóa lĩnh vực"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -256,13 +250,6 @@ export default function SettingsPage() {
                     )}
                   </tr>
                 ))}
-                {researchFields.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-6 text-center text-slate-400 text-xs">
-                      Chưa có lĩnh vực nào trong danh mục. Nhấn &ldquo;Thêm lĩnh vực&rdquo; để bắt đầu.
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>
@@ -282,7 +269,7 @@ export default function SettingsPage() {
           </div>
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-600 font-semibold">
+              <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-600 font-semibold select-none">
                 <tr>
                   <th className="p-2.5 w-12 text-center">STT</th>
                   <th className="p-2.5 w-24">Mã</th>
@@ -291,7 +278,7 @@ export default function SettingsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {departments.map((d, idx) => (
+                {departments.map((d: any, idx: number) => (
                   <tr key={d.id} className="hover:bg-slate-50">
                     <td className="p-2.5 text-center font-mono text-slate-400">{idx + 1}</td>
                     <td className="p-2.5 font-mono font-bold text-[#0A6EBD]">{d.code}</td>
@@ -314,7 +301,7 @@ export default function SettingsPage() {
               </tbody>
             </table>
           </div>
-          <p className="text-[11px] text-slate-400 text-center">
+          <p className="text-[11px] text-slate-400 text-center select-none">
             Danh mục Khoa / Phòng được đồng bộ tự động từ hệ thống HIS. Liên hệ Quản trị viên để cập nhật.
           </p>
         </div>
@@ -347,7 +334,7 @@ export default function SettingsPage() {
               { code: 'BM-TĐ-01', name: 'Báo cáo tiến độ định kỳ (6 tháng / 12 tháng)', ref: 'Thông tư 09/2024/TT-BYT – Mẫu TĐ-01', active: true },
               { code: 'BM-NT-02', name: 'Biên bản họp Hội đồng nghiệm thu chính thức', ref: 'Thông tư 09/2024/TT-BYT – Mẫu NT-02', active: true },
             ].map((m) => (
-              <div key={m.code} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50">
+              <div key={m.code} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition">
                 <div>
                   <span className="font-mono font-bold text-[#0A6EBD] text-[11px]">{m.code}</span>
                   <p className="font-semibold text-slate-900 mt-0.5">{m.name}</p>

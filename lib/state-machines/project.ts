@@ -1,22 +1,69 @@
 import { ProjectStatus } from '@/lib/types';
 
-export const PROJECT_TRANSITIONS: Record<string, string[]> = {
-  DRAFT: ['UNDER_REVIEW', 'REJECTED'],
-  UNDER_REVIEW: ['APPROVED', 'REJECTED', 'DRAFT'],
-  APPROVED: ['WAITING_ASSIGNMENT', 'REJECTED'],
-  WAITING_ASSIGNMENT: ['ASSIGNED', 'REJECTED'],
-  ASSIGNED: ['IN_PROGRESS', 'TERMINATED'],
-  IN_PROGRESS: ['WAITING_ACCEPTANCE', 'SUSPENDED', 'TERMINATED'],
-  WAITING_ACCEPTANCE: ['ACCEPTED', 'IN_PROGRESS', 'TERMINATED'],
-  ACCEPTED: ['RECOGNIZED', 'CLOSED'],
-  RECOGNIZED: ['CLOSED'],
-  CLOSED: ['ARCHIVED'],
+/**
+ * Macro lifecycle của ResearchProject.
+ *
+ * Lưu ý:
+ * - Không biểu diễn Proposal workflow ở đây.
+ * - Không biểu diễn Decision workflow ở đây.
+ * - Các gate nghiệp vụ phải được kiểm tra trước khi gọi transition.
+ */
+export const PROJECT_TRANSITIONS: Record<
+  ProjectStatus,
+  readonly ProjectStatus[]
+> = {
+  DRAFT: [
+    'SUBMITTED',
+  ],
+
+  SUBMITTED: [
+    'WAITING_ASSIGNMENT',
+    'REJECTED',
+  ],
+
+  WAITING_ASSIGNMENT: [
+    'IN_PROGRESS',
+    'REJECTED',
+  ],
+
+  IN_PROGRESS: [
+    'WAITING_ACCEPTANCE',
+    'SUSPENDED',
+    'TERMINATED',
+  ],
+
+  SUSPENDED: [
+    'IN_PROGRESS',
+    'TERMINATED',
+  ],
+
+  WAITING_ACCEPTANCE: [
+    'ACCEPTED',
+    'TERMINATED',
+  ],
+
+  ACCEPTED: [
+    'RECOGNIZED',
+  ],
+
+  RECOGNIZED: [
+    'CLOSED',
+  ],
+
+  CLOSED: [
+    'ARCHIVED',
+  ],
+
   ARCHIVED: [],
+
   REJECTED: [],
+
   TERMINATED: [],
-  SUSPENDED: ['IN_PROGRESS', 'TERMINATED'],
 };
 
-export function canTransitionProject(current: ProjectStatus, next: ProjectStatus): boolean {
-  return PROJECT_TRANSITIONS[current]?.includes(next) || false;
+export function canTransitionProject(
+  current: ProjectStatus,
+  next: ProjectStatus
+): boolean {
+  return PROJECT_TRANSITIONS[current].includes(next);
 }

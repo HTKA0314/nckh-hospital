@@ -1,20 +1,3 @@
-// ==========================================
-// HỆ THỐNG QUẢN LÝ NCKH BỆNH VIỆN – DATA TYPES v3.1
-// Thiết kế theo kế hoạch v3.1 – 10 State Machine
-// ==========================================
-/*
- MA TRẬN ĐIỀU PHỐI (ORCHESTRATION MATRIX)
- | Project Macro State | Sub-flow Requirements (Điều kiện đạt được) |
- | :--- | :--- |
- | SUBMITTED | Proposal nộp thành công (ProposalStatus = SUBMITTED) |
- | WAITING_ASSIGNMENT| ProposalStatus = PROPOSAL_APPROVED VÀ (EthicsStatus = ETHICS_APPROVED hoặc NOT_REQUIRED) |
- | IN_PROGRESS | DecisionStatus (Assignment) = ISSUED |
- | WAITING_ACCEPTANCE| AcceptanceDossierStatus = ELIGIBLE_FOR_ACCEPTANCE hoặc FORWARDED_TO_COUNCIL |
- | ACCEPTED | Hội đồng nghiệm thu kết luận ACCEPTED / CONDITIONALLY_ACCEPTED và hoàn tất sửa đổi. |
- | RECOGNIZED | DecisionStatus (Recognition) = ISSUED |
- | CLOSED | Tài chính hoàn tất (nếu có áp dụng), lưu trữ hồ sơ xong. |
-*/
-
 export type Role =
   | 'RESEARCHER'            // Nghiên cứu viên
   | 'RESEARCH_OFFICE'       // Chuyên viên phòng NCKH (nghiệp vụ)
@@ -43,6 +26,27 @@ export type Department = {
   type: 'CLINICAL' | 'SUB_CLINICAL' | 'ADMINISTRATIVE';
 };
 
+
+export type ProjectType =
+  | 'NGHIÊN_CỨU_LÂM_SÀNG'
+  | 'DỊCH_TỄ_HỌC'
+  | 'QUẢN_LÝ_Y_TẾ'
+  | 'CẢI_TIẾN_KỸ_THUẬT'
+  | 'CAN_THIỆP_CỘNG_ĐỒNG';
+
+export type FundingSource =
+  | 'NGÂN_SÁCH_BỆNH_VIỆN'
+  | 'TÀI_TRỢ_NGOÀI'
+  | 'HỖN_HỢP'
+  | 'TỰ_TÚC';
+
+export type ResearchMemberRole =
+  | 'CHỦ_NHIỆM'
+  | 'THÀNH_VIÊN_CHÍNH'
+  | 'THƯ_KÝ_KH'
+  | 'KỸ_THUẬT_VIÊN'
+  | 'CỘNG_TÁC_VIÊN';
+
 export type RegistrationRoundStatus = 'DRAFT' | 'OPEN' | 'CLOSED';
 
 export type RegistrationRound = {
@@ -62,15 +66,6 @@ export type RegistrationRound = {
   totalSubmissions?: number;
 };
 
-// ==========================================
-// 10 STATE MACHINES ĐỘC LẬP (v3.1)
-// ==========================================
-
-/**
- * SM-1: ProjectStatus – Vòng đời cốt lõi cấp cao của Đề tài
- * Macro Lifecycle Flow: DRAFT -> SUBMITTED -> WAITING_ASSIGNMENT -> IN_PROGRESS -> WAITING_ACCEPTANCE -> ACCEPTED -> RECOGNIZED -> CLOSED
- * Điều phối thông qua Orchestration Matrix bên trên.
- */
 export type ProjectStatus =
   | 'DRAFT'                 // Bản nháp
   | 'SUBMITTED'             // Đã nộp hồ sơ (giai đoạn thẩm định, ra hội đồng do ProposalFlow quản lý)
@@ -79,44 +74,32 @@ export type ProjectStatus =
   | 'WAITING_ACCEPTANCE'    // Đã nộp hồ sơ nghiệm thu
   | 'ACCEPTED'              // Hội đồng Nghiệm thu thông qua
   | 'RECOGNIZED'            // Quyết định công nhận kết quả đã ban hành
-  | 'CLOSED'                // Tài chính hoàn tất, lưu trữ hồ sơ xong
+  | 'CLOSED'                // Hoàn tất các điều kiện đóng hồ sơ theo policy
   | 'ARCHIVED'              // Lưu trữ dài hạn
   | 'SUSPENDED'             // Tạm dừng (có thể tiếp tục)
   | 'TERMINATED'            // Chấm dứt có quyết định
   | 'REJECTED';             // Bị từ chối
 
-/**
- * SM-2: ProposalStatus – Trạng thái Hồ sơ Đề xuất & Thẩm định
- * Nộp lại hồ sơ sau khi bị trả phải sinh SubmissionVersion mới.
- */
-/**
- * SM-2: ProposalStatus – Hồ sơ Đề xuất & Thẩm định
- * Mỗi lần nộp lại sau REVISION_REQUIRED phải sinh SubmissionVersion mới.
- * Mỗi lần chủ nhiệm sửa sau Hội đồng (PROPOSAL_RESUBMITTED) cũng phải sinh version.
- */
+
 export type ProposalStatus =
   | 'DRAFT'
   | 'SUBMITTED'
   | 'UNDER_ADMIN_REVIEW'
-  | 'REVISION_REQUIRED'                 // Hành chính trả lại – sinh version mới khi nộp lại
-  | 'RESUBMITTED'                       // Đã nộp lại sau yêu cầu hành chính
-  | 'ADMIN_VALIDATED'                   // Hợp lệ hành chính
-  | 'PROPOSAL_REVISION_REQUIRED'        // Hội đồng yêu cầu chỉnh sửa đề cương
-  | 'PROPOSAL_RESUBMITTED'              // Chủ nhiệm nộp lại bản đề cương đã chỉnh
-  | 'UNDER_PROPOSAL_REVISION_REVIEW'    // Hội đồng/Phòng NCKH xét lại bản chỉnh sửa
-  | 'PROPOSAL_APPROVED'                 // Hội đồng thông qua
-  | 'REJECTED';                         // Từ chối
+  | 'REVISION_REQUIRED'
+  | 'RESUBMITTED'
+  | 'ADMIN_VALIDATED'
 
-/**
- * SM-3: EthicsStatus – Trạng thái Hồ sơ Đạo đức Y sinh (IRB)
- * NOT_REQUIRED: Xác định ngay khi sàng lọc – không yêu cầu IRB.
- * Không hardcode thời hạn hiệu lực; dùng approvalDate + expiryDate.
- */
-/**
- * SM-3: EthicsStatus – Hồ sơ Đạo đức Y sinh (IRB)
- * approvalDate, expiryDate, reviewType lưu theo quyết định thực tế, không hardcode.
- * SUSPENDED/WITHDRAWN/TERMINATED: dự phòng cho trường hợp chấp thuận bị đình chỉ/thu hồi.
- */
+  // Giai đoạn đề cương
+  | 'OUTLINE_SUBMITTED'
+  | 'UNDER_PROPOSAL_REVIEW'
+
+  // Sau Hội đồng
+  | 'PROPOSAL_REVISION_REQUIRED'
+  | 'PROPOSAL_RESUBMITTED'
+  | 'UNDER_PROPOSAL_REVISION_REVIEW'
+  | 'PROPOSAL_APPROVED'
+  | 'REJECTED';                       // Từ chối
+
 export type EthicsStatus =
   | 'NOT_REQUIRED'                // Sàng lọc xác định không cần IRB
   | 'SCREENING_IN_PROGRESS'       // Đang sàng lọc phân loại
@@ -133,7 +116,7 @@ export type EthicsStatus =
 
 /**
  * SM-4: CouncilStatus – Trạng thái Hội đồng
- * Council Flow là engine dùng chung cho các loại hội đồng (PROPOSAL_REVIEW, ACCEPTANCE_REVIEW, ETHICS_REVIEW nếu có).
+ * Council Flow là engine dùng chung cho Hội đồng xét duyệt đề cương và Hội đồng nghiệm thu. Hội đồng đạo đức được quản lý bằng Ethics Flow riêng.
  */
 export type CouncilStatus =
   | 'DRAFT'
@@ -154,15 +137,6 @@ export type ProgressReportStatus =
   | 'REVISION_REQUIRED'
   | 'REJECTED';
 
-/**
- * SM-6: ChangeRequestStatus – Trạng thái Đề xuất Điều chỉnh
- * Dữ liệu gốc đề tài CHỈ được cập nhật khi status = 'APPROVED'.
- */
-/**
- * SM-6: ChangeRequestStatus – Yêu cầu điều chỉnh đề tài
- * Bổ sung vòng yêu cầu bổ sung: UNDER_REVIEW → REVISION_REQUIRED → RESUBMITTED → UNDER_REVIEW
- * Dữ liệu gốc đề tài CHỈ cập nhật khi status = APPROVED.
- */
 export type ChangeRequestStatus =
   | 'DRAFT'
   | 'SUBMITTED'
@@ -172,15 +146,6 @@ export type ChangeRequestStatus =
   | 'APPROVED'
   | 'REJECTED';
 
-/**
- * SM-7: AcceptanceDossierStatus – Trạng thái Hồ sơ Nghiệm thu
- * Điều kiện tạo Hội đồng Nghiệm thu: status = 'ELIGIBLE_FOR_ACCEPTANCE'
- */
-/**
- * SM-7: AcceptanceDossierStatus – Hồ sơ Nghiệm thu
- * Dừng ở FORWARDED_TO_COUNCIL; kết quả nghiệm thu thuộc AcceptanceEvaluation entity riêng.
- * Điều kiện tạo Hội đồng Nghiệm thu: status = ELIGIBLE_FOR_ACCEPTANCE
- */
 export type AcceptanceDossierStatus =
   | 'NOT_SUBMITTED'
   | 'DRAFT'
@@ -188,8 +153,8 @@ export type AcceptanceDossierStatus =
   | 'UNDER_ADMIN_REVIEW'
   | 'REVISION_REQUIRED'
   | 'RESUBMITTED'
-  | 'ELIGIBLE'                   // Checklist đạt – đủ điều kiện nghiệm thu
-  | 'COUNCIL_REVIEW';            // Đã chuyển cho Hội đồng Nghiệm thu (kết quả thuộc AcceptanceEvaluation)
+  | 'ELIGIBLE_FOR_ACCEPTANCE'
+  | 'FORWARDED_TO_COUNCIL';
 
 /**
  * SM-8: DecisionStatus – Trạng thái Văn bản Quyết định pháp lý
@@ -202,12 +167,6 @@ export type DecisionStatus =
   | 'SIGNED'
   | 'ISSUED';
 
-
-/**
- * SM-9: FinanceStatus – Trạng thái Tài chính Đề tài
- * Phân hệ tùy chọn (Optional Module), phụ thuộc vào cấu hình của bệnh viện có quy trình giải ngân nội bộ hay không.
- * Điều kiện đóng đề tài (nếu áp dụng): FinanceStatus = 'CLOSED'
- */
 export type FinanceStatus =
   | 'PENDING'               // Chờ cấp kinh phí
   | 'ACTIVE'                // Đang thực hiện chi tiêu
@@ -215,10 +174,6 @@ export type FinanceStatus =
   | 'FINALIZED'             // Đã quyết toán xong
   | 'CLOSED';               // Đã đóng tài chính hoàn toàn
 
-/**
- * SM-10: MilestoneStatus – Trạng thái từng Mốc tiến độ (chính thức)
- * Vòng sửa: SUBMITTED → REVISION_REQUIRED → IN_PROGRESS → SUBMITTED
- */
 export type MilestoneStatus =
   | 'NOT_STARTED'
   | 'IN_PROGRESS'
@@ -239,17 +194,15 @@ export type ContractStatus =
   | 'LIQUIDATED'
   | 'CLOSED';
 
-// ==========================================
-// CÁC ENTITIES CHI TIẾT
-// ==========================================
 
 export type ResearchMember = {
   id: string;
+  userId?: string;
   projectId: string;
   fullName: string;
   academicRank: string;
   unit: string;
-  roleInProject: 'CHỦ_NHIỆM' | 'THƯ_KÝ_KH' | 'THÀNH_VIÊN_CHÍNH' | 'KỸ_THUẬT_VIÊN' | 'CỘNG_TÁC_VIÊN';
+  roleInProject: ResearchMemberRole;
   contributionPercentage: number;
 };
 
@@ -298,7 +251,13 @@ export type ProjectDocument = {
 export type DecisionHistoryEntry = {
   id: string;
   decisionId: string;
-  action: 'DRAFT_CREATED' | 'SUBMITTED_FOR_SIGNATURE' | 'SIGNED' | 'REJECTED' | 'ISSUED';
+  action:
+    | 'DRAFT_CREATED'
+    | 'SUBMITTED_FOR_SIGNATURE'
+    | 'RETURNED'
+    | 'RESUBMITTED_FOR_SIGNATURE'
+    | 'SIGNED'
+    | 'ISSUED';
   fromStatus?: DecisionStatus;
   toStatus: DecisionStatus;
   actorId: string;
@@ -318,21 +277,17 @@ export type Decision = {
   projectId: string;
   decisionNumber?: string;
   issuedDate?: string;
-  signedBy?: string;
+  signedBy?: string; // Tên người ký hiển thị; production nên lưu thêm signerUserId nếu cần đối soát
   signedDate?: string;
   draftFile?: string;
   signedFile?: string;
   notes?: string;
   createdAt: string;
+  updatedAt?: string;
   createdBy: string;
   history: DecisionHistoryEntry[];
 };
 
-/**
- * SubmissionVersion – Phiên bản Hồ sơ hoàn chỉnh (không chỉ file)
- * Mỗi lần nộp lại sau REVISION_REQUIRED hoặc PROPOSAL_REVISION_REQUIRED phải sinh version mới.
- * structuredDataSnapshot lưu toàn bộ dữ liệu nghiệp vụ tại thời điểm nộp.
- */
 export type SubmissionVersion = {
   id: string;
   projectId: string;
@@ -348,18 +303,13 @@ export type SubmissionVersion = {
   documents: DocumentVersion[];
 };
 
-/**
- * AuditLog – Nhật ký vận hành hệ thống (không sửa/xoá được)
- * correlationId: Dùng khi 1 thao tác nghiệp vụ sinh nhiều thay đổi cùng lúc
- * (VD: Ký Quyết định → đổi DecisionStatus + ProjectStatus + tạo Notification + WorkItem)
- */
 export type AuditLog = {
   id: string;
   timestamp: string;
   userId: string;
   userFullName: string;
   userRole: Role;
-  entityType: 'PROJECT' | 'COUNCIL' | 'ETHICS' | 'DECISION' | 'FINANCE' | 'CHANGE_REQUEST' | 'ACCEPTANCE' | 'USER' | 'MILESTONE' | 'SUBMISSION_VERSION';
+  entityType: 'PROJECT' | 'COUNCIL' | 'ETHICS' | 'DECISION' | 'FINANCE' | 'CHANGE_REQUEST' | 'ACCEPTANCE' | 'USER' | 'MILESTONE' | 'SUBMISSION_VERSION' | 'CLOSURE';
   entityId: string;
   actionCode: string;
   fromStatus?: string;
@@ -372,13 +322,6 @@ export type AuditLog = {
   // ipAddress?: string;  // Để dành cho production
 };
 
-// ==========================================
-// WORK ITEMS & BUSINESS EVENTS
-// ==========================================
-
-/**
- * BusinessEvent – Các sự kiện nghiệp vụ phát sinh WorkItem + Notification + AuditLog
- */
 export type BusinessEventType =
   | 'PROJECT_SUBMITTED'
   | 'DOSSIER_REVISION_REQUIRED'
@@ -393,7 +336,15 @@ export type BusinessEventType =
   | 'PROJECT_RECOGNIZED'
   | 'MILESTONE_OVERDUE'
   | 'CHANGE_REQUEST_SUBMITTED'
-  | 'FINANCE_CLOSING_REQUIRED';
+  | 'FINANCE_CLOSING_REQUIRED'
+  | 'DECISION_SIGNATURE_REQUIRED'
+  | 'COUNCIL_MINUTES_SIGNATURE_REQUIRED'
+  | 'ACCEPTANCE_DOSSIER_SUBMITTED'
+  | 'CHANGE_REQUEST_REVISION_REQUIRED'
+  | 'PROJECT_CLOSING_REQUIRED'
+  | 'ETHICS_DOSSIER_SUBMITTED'
+  | 'ETHICS_REVISION_REQUIRED'
+  | 'ETHICS_APPROVED';
 
 /**
  * WorkItem – Công việc cần xử lý (tập trung tại Dashboard / My Tasks)
@@ -440,8 +391,8 @@ export type AcceptanceEvaluation = {
 export type ProjectStatusHistory = {
   id: string;
   projectId: string;
-  fromStatus: string;
-  toStatus: string;
+  fromStatus: ProjectStatus | 'NONE';
+  toStatus: ProjectStatus;
   changedBy: string;
   changedByName: string;
   userRole: Role;
@@ -473,7 +424,7 @@ export type ProgressReport = {
   reportingDate: string;
   workCompleted: string;
   resultsAchieved: string;
-  completedPercentage: number;
+  reportedCompletionPercentage: number;
   difficulties?: string;
   nextPlan: string;
   evidenceUrls: { name: string; url: string }[];
@@ -493,7 +444,7 @@ export type ChangeRequestType =
   | 'CHANGE_CONTENT'        // Thay đổi nội dung nghiên cứu
   | 'CHANGE_OBJECTIVE'      // Thay đổi mục tiêu nghiên cứu
   | 'CHANGE_PRODUCT'        // Thay đổi sản phẩm cam kết
-  | 'CHANGE_BUDGET'         // Điều chỉnh kinh phí
+  | 'ADJUST_BUDGET'         // Điều chỉnh kinh phí
   | 'CHANGE_PARTNER'        // Thay đổi đơn vị phối hợp
   | 'SUSPENSION'            // Tạm dừng
   | 'RESUME'                // Tiếp tục sau tạm dừng
@@ -568,7 +519,7 @@ export type AcceptanceDossier = {
   productsSummary: string;
   productsCommitted: string;   // Sản phẩm cam kết ban đầu (đối chiếu)
   productsActual: string;      // Sản phẩm thực tế bàn giao
-  completionPercentage: number;
+  claimedOverallCompletionPercentage?: number;
   evidenceUrls: { name: string; url: string }[];
   ethicsSummaryUrl?: string;
   financialSummaryUrl?: string;
@@ -606,7 +557,7 @@ export type PostAcceptanceRevision = {
 export type FinancialSummary = {
   id: string;
   projectId: string;
-  fundingSource: 'NGÂN_SÁCH_BỆNH_VIỆN' | 'TỰ_TÚC' | 'TÀI_TRỢ_NGOÀI' | 'HỖN_HỢP';
+  fundingSource: FundingSource;
   estimatedBudget: number;
   approvedBudget: number;
   allocatedBudget: number;    // Đã cấp/Tạm ứng
@@ -622,6 +573,8 @@ export type FinancialSummary = {
 // ==========================================
 // HỘI ĐỒNG – CẤU HÌNH LINH HOẠT
 // ==========================================
+
+export type CouncilType = 'PROPOSAL_REVIEW' | 'ACCEPTANCE';
 
 export type CouncilRole = 'CHỦ_TỊCH' | 'THƯ_KÝ' | 'PHẢN_BIỆN' | 'ỦY_VIÊN';
 
@@ -643,7 +596,7 @@ export type ScoringCriteria = {
 export type CriteriaSet = {
   id: string;
   name: string;
-  councilType: 'PROPOSAL_REVIEW' | 'ACCEPTANCE_REVIEW';
+  councilType: CouncilType;
   applicableResearchTypes?: string[];
   criteria: ScoringCriteria[];
 };
@@ -668,7 +621,6 @@ export type CouncilMember = {
   departmentName: string;
   roleInCouncil: CouncilRole;
   hasConflictOfInterest: boolean;
-  evaluationSubmitted: boolean;
 };
 
 export type EvaluationScoreItem = {
@@ -694,7 +646,7 @@ export type EvaluationResult = {
   recommendations?: string;
   submittedAt: string;
   status: 'DRAFT' | 'SUBMITTED' | 'SIGNED';
-  signedBy?: string;
+  signedBy?: string; // Tên người ký hiển thị; production nên lưu thêm signerUserId nếu cần đối soát
   signedAt?: string;
 };
 
@@ -723,10 +675,6 @@ export type MeetingMinutes = {
 
 export type CouncilProjectAssignment = {
   projectId: string;
-  reviewer1Id?: string;
-  reviewer1Name?: string;
-  reviewer2Id?: string;
-  reviewer2Name?: string;
   reviewerAssignments?: {  // Số lượng phản biện theo cấu hình, không hardcode PB1/PB2
     reviewerId: string;
     reviewerName: string;
@@ -739,12 +687,12 @@ export type Council = {
   id: string;
   code: string;
   name: string;
-  type: 'PROPOSAL_REVIEW' | 'ACCEPTANCE_REVIEW';
+  type: CouncilType;
   specialtyCluster?: string;
   projectIds: string[];
   projectAssignments?: CouncilProjectAssignment[];
   criteriaSetId?: string;         // Liên kết bộ tiêu chí theo cấu hình
-  scoringCriteriaSet?: { id: string; name: string; maxScore: number }[]; // Tiêu chí đánh giá
+  scoringCriteriaSnapshot?: { id: string; name: string; maxScore: number; weight: number; isRequired: boolean }[];
   ratingScheme?: AcceptanceRatingLevel[]; // Cho Hội đồng Nghiệm thu
   minMembers?: number;            // Số thành viên tối thiểu (cấu hình)
   maxMembers?: number;            // Số thành viên tối đa (cấu hình)
@@ -784,6 +732,7 @@ export type ResearchContract = {
   signedDate: string;
   expiryDate: string;
   value: number;
+  status?: ContractStatus;
   fileUrl?: string;
   liquidationDate?: string;
 };
@@ -799,12 +748,37 @@ export type Notification = {
   createdAt: string;
 };
 
+export type ProjectClosureStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+
+export type ProjectClosureItem = {
+  code: string;
+  label: string;
+  required: boolean;
+  completed: boolean;
+  completedAt?: string;
+  completedBy?: string;
+  notes?: string;
+};
+
+export type ProjectClosure = {
+  id: string;
+  projectId: string;
+  status: ProjectClosureStatus;
+  items: ProjectClosureItem[];
+  confirmedBy?: string;
+  confirmedByName?: string;
+  confirmedAt?: string;
+  notes?: string;
+};
+
 export interface WorkflowPolicy {
   id: string;
   code: string;
   name: string;
   version: string;
   effectiveFrom: string;
+  effectiveTo?: string;
+  registrationMode?: 'ROUND' | 'CONTINUOUS';
   reportingIntervalMonths?: number;  // 1, 3, 6 tháng
   minDurationMonths?: number;
   maxDurationMonths?: number;
@@ -812,10 +786,34 @@ export interface WorkflowPolicy {
   extensionDurationMonths?: number;
   requiresScientificReview: boolean;
   requiresEthicsReview: boolean;
+  financeEnabled?: boolean;
+  contractEnabled?: boolean;
   ethicsReviewMode?: 'SEPARATE' | 'INTEGRATED';
   acceptanceMode?: 'INTERNAL' | 'EXTERNAL';
+  councilPolicy?: {
+    minMembers?: number;
+    maxMembers?: number;
+    requiredRoles?: CouncilRole[];
+    requiredReviewerCount?: number;
+    minSignedEvaluationsBeforeMinutes?: number;
+    minPassRatio?: number;
+  };
+  decisionPolicy?: {
+    allowReturnForRevision?: boolean;
+  };
+  closingPolicy?: {
+    requiredItems?: string[];
+  };
   requiredDocumentsByStep: Record<number, { type: DocumentType; label: string; required: boolean }[]>;
+  customProjectTypes?: { code: string; label: string }[];
+  customFundingSources?: { code: string; label: string }[];
 }
+
+export type ProposalContent = {
+  projectId: string;
+  schemaVersion: string;
+  data: Record<string, unknown>;
+};
 
 // ==========================================
 // THỰC THỂ TRUNG TÂM: RESEARCH PROJECT
@@ -824,7 +822,8 @@ export interface WorkflowPolicy {
 export type ResearchProject = {
   id: string;
   workflowPolicyId: string;
-  projectCategory: 'NHA_NUOC' | 'CAP_BO' | 'CAP_CO_SO' | 'HTQT' | 'LIEN_NGANH' | 'KHOA_PHONG' | 'NOI_TRU' | 'CAO_HOC' | 'NCS' | 'KHAC';
+  workflowPolicyVersionId?: string;
+  projectCategory: string; // Master data/configuration theo từng bệnh viện
   acceptanceAuthority: 'BENH_VIEN' | 'CO_SO_DAO_TAO';
   scientificReviewStatus: 'REQUIRED' | 'OPTIONAL' | 'SKIPPED';
   scientificReviewSkipReason?: string;
@@ -835,7 +834,7 @@ export type ResearchProject = {
   summary: string;
   researchField: string;
   managementLevel: 'CẤP_CƠ_SỞ' | 'CẤP_TỈNH' | 'CẤP_BỘ' | 'CẤP_QUỐC_GIA';
-  projectType: 'NGHIÊN_CỨU_LÂM_SÀNG' | 'CAN_THIỆP_CỘNG_ĐỒNG' | 'DỊCH_TỄ_HỌC' | 'QUẢN_LÝ_Y_TẾ' | 'CẢI_TIẾN_KỸ_THUẬT';
+  projectType: ProjectType;
   principalInvestigatorId: string;
   principalInvestigatorName: string;
   departmentId: string;
@@ -845,10 +844,12 @@ export type ResearchProject = {
   durationMonths?: number;
   estimatedBudget: number;
   approvedBudget: number;
-  fundingSource: 'NGÂN_SÁCH_BỆNH_VIỆN' | 'TỰ_TÚC' | 'TÀI_TRỢ_NGOÀI' | 'HỖN_HỢP';
-  progressPercentage: number;
+  fundingSource: FundingSource;
+  reportedProgressPercentage?: number;
 
-  // 10 Trường thông tin của Phiếu đề xuất đề tài cấp cơ sở
+  proposalContent?: ProposalContent; // Cấu trúc động ưu tiên cho triển khai đa bệnh viện
+
+  // Legacy fields của Phiếu đề xuất hiện tại - giữ tương thích, không nên mở rộng thêm
   urgencyExplanation?: string; // 1. Giải trình về tính cấp thiết của đề tài
   expectedObjectives?: string; // 2. Mục tiêu dự kiến
   researchDesign?: string; // 3.1. Thiết kế nghiên cứu
@@ -864,7 +865,7 @@ export type ResearchProject = {
   hospitalApplication?: string; // 9. Khả năng ứng dụng vào khoa phòng/bệnh viện
   otherInfo?: string; // 10. Thông tin khác (nếu có)
 
-  // 9 State Machines tách biệt
+  // Các state machine nghiệp vụ tách biệt
   status: ProjectStatus;                          // SM-1: Vòng đời cốt lõi
   proposalStatus: ProposalStatus;                 // SM-2: Trạng thái hồ sơ đề xuất
   ethicsRequired: boolean;
@@ -874,12 +875,13 @@ export type ResearchProject = {
   // SM-6 (ChangeRequestStatus) thuộc entity ChangeRequest
   // SM-7 (AcceptanceDossierStatus) thuộc entity AcceptanceDossier
   // SM-8 (DecisionStatus) thuộc entity Decision
-  financeStatus: FinanceStatus;                   // SM-9: Trạng thái tài chính
+  financeStatus?: FinanceStatus;                  // Tuỳ chọn khi policy bật mô-đun tài chính
 
   registrationRoundId: string;
   registrationRoundName: string;
 
   createdAt: string;
+  updatedAt?: string;
   submittedAt?: string;
   approvedAt?: string;
   completedAt?: string;
@@ -896,6 +898,7 @@ export type ResearchProject = {
   financialSummary?: FinancialSummary;
   decisions: Decision[];
   contract?: ResearchContract;               // Tuỳ chọn
+  closure?: ProjectClosure;
   statusHistory: ProjectStatusHistory[];
   auditLogs?: AuditLog[];
 };

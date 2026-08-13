@@ -14,7 +14,6 @@ import {
   Printer,
   Eye,
   Edit,
-  Activity,
   Users,
   FileCheck2,
   Award,
@@ -28,20 +27,13 @@ import {
   CheckCircle2,
   Calendar,
   Paperclip,
-  CreditCard,
   MoreVertical,
   AlertCircle,
-  ArrowRight,
   ClipboardList,
-  HelpCircle,
-  UserCheck,
-  UserX,
-  PenTool,
   MoreHorizontal,
 } from 'lucide-react';
-import { ApproveProposalModal } from './ApproveProposalModal';
-import { CreateMeetingMinutesModal } from './CreateMeetingMinutesModal';
 import { useAuth } from '@/lib/auth-context';
+import { ResearchProject, ProjectStatus, ProposalStatus } from '@/lib/types';
 
 /* ─────────────────────────────────────────────────────────────
    Quick-view Drawer – Hiển thị chi tiết, không thao tác nghiệp vụ
@@ -97,17 +89,17 @@ function ProjectDrawer({
             <div className="flex-1">
               <div className="flex items-center justify-between text-[13px] font-bold mb-1">
                 <span className="text-slate-500">Tiến độ thực hiện</span>
-                <span className="text-[#0A6EBD]">{p.progressPercentage}%</span>
+                <span className="text-[#0A6EBD]">{p.reportedProgressPercentage}%</span>
               </div>
               <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
                 <div
                   className="h-2 rounded-full transition-all"
                   style={{
-                    width: `${p.progressPercentage}%`,
+                    width: `${p.reportedProgressPercentage}%`,
                     background:
-                      p.progressPercentage >= 75
+                      (p.reportedProgressPercentage ?? 0) >= 75
                         ? '#059669'
-                        : p.progressPercentage >= 40
+                        : (p.reportedProgressPercentage ?? 0) >= 40
                         ? '#0A6EBD'
                         : '#F59E0B',
                   }}
@@ -188,7 +180,7 @@ function ProjectDrawer({
             <Eye className="w-3.5 h-3.5" /> Xem toàn bộ hồ sơ
           </button>
           <button
-            onClick={() => router.push(`/progress`)}
+            onClick={() => router.push(`/projects/${p.id}/progress`)}
             className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-[13px] font-semibold rounded-lg transition"
           >
             <TrendingUp className="w-3.5 h-3.5" /> Tiến độ
@@ -210,8 +202,6 @@ function RowActionMenu({
   role,
   onAdminReview,
   onRevisionRequest,
-  onApproveProposal,
-  onCreateMinutes,
   onExportDoc,
   onViewAttachments,
 }: {
@@ -221,8 +211,6 @@ function RowActionMenu({
   role: string;
   onAdminReview?: () => void;
   onRevisionRequest?: () => void;
-  onApproveProposal?: () => void;
-  onCreateMinutes?: () => void;
   onExportDoc?: () => void;
   onViewAttachments?: () => void;
 }) {
@@ -241,7 +229,7 @@ function RowActionMenu({
   }, []);
 
   const isResearcher = role === 'RESEARCHER';
-  const isReviewStaff = ['RESEARCH_OFFICE', 'DIRECTOR', 'ADMIN'].includes(role);
+  const isReviewStaff = role === 'RESEARCH_OFFICE';
 
   type Action =
     | { kind: 'link'; icon: React.ElementType; label: string; href: string; color?: string }
@@ -262,7 +250,7 @@ function RowActionMenu({
 
     /* ── 1. DRAFT ── */
     if (status === 'DRAFT') {
-      if (isResearcher || role === 'ADMIN') {
+      if (isResearcher) {
         return withCommon([
           { kind: 'link', icon: Edit, label: 'Tiếp tục chỉnh sửa', href: `/projects/register?draftId=${projectId}` },
           { kind: 'link', icon: Eye, label: 'Xem trước hồ sơ', href: `/projects/${projectId}` },
@@ -273,7 +261,7 @@ function RowActionMenu({
     }
 
     /* ── 2. UNDER_REVIEW – Phân nhánh theo proposalStatus ── */
-    if (status === 'UNDER_REVIEW') {
+    if (status === 'SUBMITTED') {
       const actions: Action[] = [viewDetail, { kind: 'divider' }];
       if (exportDoc) actions.push(exportDoc);
       if (viewAttach) actions.push(viewAttach);
@@ -288,22 +276,33 @@ function RowActionMenu({
         if (isReviewStaff && onAdminReview) {
           actions.push({ kind: 'divider' });
           actions.push({ kind: 'btn', icon: ClipboardList, label: 'Tiếp tục xử lý hồ sơ', color: 'text-amber-700', onClick: onAdminReview });
-          if (onApproveProposal) {
-            actions.push({ kind: 'btn', icon: FileCheck2, label: 'Duyệt đề xuất (Legacy)', color: 'text-[#0A6EBD]', onClick: onApproveProposal });
-          }
+
         }
       } else if (proposalStatus === 'ADMIN_VALIDATED') {
         // Hồ sơ hợp lệ → Chờ Hội đồng xét duyệt
         if (isReviewStaff) {
           actions.push({ kind: 'divider' });
           actions.push({ kind: 'link', icon: Users, label: 'Xem Hội đồng xét duyệt', href: `/councils`, color: 'text-[#0A6EBD]' });
-          if (onCreateMinutes) {
-            actions.push({ kind: 'btn', icon: FileText, label: 'Tạo biên bản họp HĐKH', color: 'text-emerald-700', onClick: onCreateMinutes });
-          }
+
+        }
+      } else if (
+        proposalStatus === 'OUTLINE_SUBMITTED' ||
+        proposalStatus === 'UNDER_PROPOSAL_REVIEW' ||
+        proposalStatus === 'UNDER_PROPOSAL_REVISION_REVIEW'
+      ) {
+        if (isReviewStaff) {
+          actions.push({ kind: 'divider' });
+          actions.push({
+            kind: 'link',
+            icon: Users,
+            label: 'Mở Hội đồng xét duyệt',
+            href: `/councils`,
+            color: 'text-[#0A6EBD]',
+          });
         }
       } else if (proposalStatus === 'REVISION_REQUIRED' || proposalStatus === 'PROPOSAL_REVISION_REQUIRED') {
         // Chủ nhiệm cần bổ sung
-        if (isResearcher || role === 'ADMIN') {
+        if (isResearcher) {
           actions.push({ kind: 'divider' });
           actions.push({ kind: 'link', icon: Edit, label: 'Bổ sung hồ sơ', href: `/projects/${projectId}/resubmit`, color: 'text-amber-700' });
         }
@@ -324,7 +323,7 @@ function RowActionMenu({
       if (exportDoc) actions.push(exportDoc);
       if (viewAttach) actions.push(viewAttach);
 
-      if (isResearcher || role === 'ADMIN') {
+      if (isResearcher) {
         actions.push({ kind: 'divider' });
         actions.push({ kind: 'link', icon: Edit, label: 'Bổ sung / Nộp lại hồ sơ', href: `/projects/${projectId}/resubmit`, color: 'text-amber-700' });
       }
@@ -332,7 +331,7 @@ function RowActionMenu({
     }
 
     /* ── 4. Chờ ban hành Quyết định (APPROVED / WAITING_ASSIGNMENT / PROPOSAL_APPROVED) ── */
-    if (status === 'PROPOSAL_APPROVED' || status === 'WAITING_ASSIGNMENT' || status === 'APPROVED') {
+    if (status === 'WAITING_ASSIGNMENT' || proposalStatus === 'PROPOSAL_APPROVED') {
       const actions: Action[] = [viewDetail, { kind: 'divider' }];
       if (exportDoc) actions.push(exportDoc);
       if (viewAttach) actions.push(viewAttach);
@@ -351,12 +350,12 @@ function RowActionMenu({
     }
 
     /* ── 5. Đang thực hiện ── */
-    if (status === 'IN_PROGRESS' || status === 'ASSIGNED') {
+    if (status === 'IN_PROGRESS') {
       const actions: Action[] = [viewDetail, { kind: 'divider' }];
       if (exportDoc) actions.push(exportDoc);
       if (viewAttach) actions.push(viewAttach);
 
-      if (isResearcher || role === 'ADMIN') {
+      if (isResearcher) {
         actions.push({ kind: 'divider' });
         actions.push({ kind: 'link', icon: GitPullRequest, label: 'Tạo yêu cầu điều chỉnh', href: `/projects/${projectId}/change-requests` });
       }
@@ -398,7 +397,7 @@ function RowActionMenu({
           color: 'text-emerald-700',
         });
       }
-      if (isResearcher || role === 'ADMIN') {
+      if (isResearcher) {
         actions.push({ kind: 'link', icon: FileText, label: 'Xem báo cáo tổng kết', href: `/projects/${projectId}/final-report` });
       }
       return actions;
@@ -487,10 +486,10 @@ function RowActionMenu({
                 key={i}
                 onClick={() => {
                   setIsOpen(false);
-                  (a as any).onClick();
+                  a.onClick();
                 }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition hover:bg-slate-50 ${
-                  (a as any).color || 'text-slate-700'
+                  a.color || 'text-slate-700'
                 }`}
               >
                 <a.icon className="w-4 h-4" />
@@ -500,173 +499,6 @@ function RowActionMenu({
           })}
         </div>
       )}
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────
-   AdminReviewDialog – Xử lý hành chính nhẹ: Xác nhận hợp lệ /
-   Yêu cầu bổ sung / Từ chối tiếp nhận (với lý do & chế độ)
-   ───────────────────────────────────────────────────────────── */
-function AdminReviewDialog({
-  projectId,
-  onClose,
-}: {
-  projectId: string;
-  onClose: () => void;
-}) {
-  const [mode, setMode] = useState<'confirm' | 'revision' | 'reject' | null>(null);
-  const [reason, setReason] = useState('');
-  const [saved, setSaved] = useState(false);
-
-  const project = repo.getProjectById(projectId);
-  if (!project) return null;
-
-  const handleConfirmValid = () => {
-    repo.updateProject(projectId, { proposalStatus: 'VALID' });
-    setSaved(true);
-    setTimeout(onClose, 1800);
-  };
-
-  const handleRevision = () => {
-    if (!reason.trim()) return;
-    repo.updateProject(projectId, { proposalStatus: 'REVISION_REQUIRED' });
-    setSaved(true);
-    setTimeout(onClose, 1800);
-  };
-
-  const handleReject = () => {
-    if (!reason.trim()) return;
-    // Từ chối tiếp nhận → REJECTED, giữ lịch sử, KHÔNG về DRAFT
-    repo.updateProject(projectId, { status: 'REJECTED', proposalStatus: 'REJECTED' });
-    setSaved(true);
-    setTimeout(onClose, 1800);
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
-          <div>
-            <h2 className="text-[15px] font-bold text-slate-900">Kiểm tra hồ sơ hành chính</h2>
-            <p className="text-[11px] text-slate-500 mt-0.5 font-mono">{project.proposalCode}</p>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 transition">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-4">
-          {saved ? (
-            <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-[12px] text-emerald-800 font-medium">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              {mode === 'confirm' && 'Hồ sơ đã được xác nhận hợp lệ. Phòng NCKH có thể tiếp tục bố trí Hội đồng xét duyệt.'}
-              {mode === 'revision' && 'Đã gửi yêu cầu bổ sung đến chủ nhiệm đề tài.'}
-              {mode === 'reject' && 'Đã từ chối tiếp nhận hồ sơ. Hồ sơ đã được lưu lịch sử.'}
-            </div>
-          ) : mode === null ? (
-            /* Chọn hành động */
-            <div className="space-y-2.5">
-              <p className="text-[12px] text-slate-500 font-medium">Chọn kết quả kiểm tra hồ sơ hành chính:</p>
-              <button
-                onClick={() => setMode('confirm')}
-                className="w-full flex items-center gap-3 p-3.5 rounded-xl border-2 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 transition text-left"
-              >
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                <div>
-                  <p className="text-[13px] font-bold text-emerald-800">Xác nhận hồ sơ hợp lệ</p>
-                  <p className="text-[11px] text-emerald-600 mt-0.5">Hồ sơ đủ thành phần, đúng biểu mẫu → chuyển xét duyệt chuyên môn</p>
-                </div>
-              </button>
-              <button
-                onClick={() => setMode('revision')}
-                className="w-full flex items-center gap-3 p-3.5 rounded-xl border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 transition text-left"
-              >
-                <Edit className="w-5 h-5 text-amber-600 shrink-0" />
-                <div>
-                  <p className="text-[13px] font-bold text-amber-800">Yêu cầu bổ sung hồ sơ</p>
-                  <p className="text-[11px] text-amber-600 mt-0.5">Hồ sơ thiếu/sai thành phần → trả về chủ nhiệm để chỉnh sửa</p>
-                </div>
-              </button>
-              <button
-                onClick={() => setMode('reject')}
-                className="w-full flex items-center gap-3 p-3.5 rounded-xl border-2 border-rose-200 bg-rose-50 hover:bg-rose-100 transition text-left"
-              >
-                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-                <div>
-                  <p className="text-[13px] font-bold text-rose-800">Từ chối tiếp nhận</p>
-                  <p className="text-[11px] text-rose-600 mt-0.5">Hồ sơ không đủ điều kiện tham dự → kết thúc xử lý</p>
-                </div>
-              </button>
-            </div>
-          ) : mode === 'confirm' ? (
-            <div className="space-y-3">
-              <button onClick={() => setMode(null)} className="text-[12px] text-slate-400 hover:text-slate-600 flex items-center gap-1">
-                ← Quay lại
-              </button>
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-[12px] text-emerald-800 font-medium">
-                Xác nhận hồ sơ <strong>{project.proposalCode}</strong> đủ điều kiện. Hồ sơ sẽ chuyển sang trạng thái <strong>Hồ sơ hợp lệ</strong>.
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <button onClick={() => setMode(null)} className="text-[12px] text-slate-400 hover:text-slate-600 flex items-center gap-1">
-                ← Quay lại
-              </button>
-              <div>
-                <label className="text-[12px] font-bold text-slate-700 block mb-1.5">
-                  {mode === 'revision' ? 'Nội dung yêu cầu bổ sung' : 'Lý do từ chối tiếp nhận'}{' '}
-                  <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  rows={4}
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  placeholder={
-                    mode === 'revision'
-                      ? 'Mô tả cụ thể những thành phần hồ sơ cần bổ sung, biểu mẫu cần chỉnh sửa...'
-                      : 'Nêu rõ lý do từ chối tiếp nhận hồ sơ này...'
-                  }
-                  className="w-full px-3 py-2.5 text-[12px] text-slate-800 border border-slate-300 rounded-lg outline-none focus:border-[#0A6EBD] bg-white resize-none"
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        {!saved && (
-          <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex justify-end gap-2">
-            <button onClick={onClose} className="h-8 px-4 text-[12px] font-semibold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition">
-              Hủy
-            </button>
-            {mode === 'confirm' && (
-              <button onClick={handleConfirmValid} className="h-8 px-4 text-[12px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition shadow-xs">
-                Xác nhận hợp lệ
-              </button>
-            )}
-            {mode === 'revision' && (
-              <button
-                onClick={handleRevision}
-                disabled={!reason.trim()}
-                className="h-8 px-4 text-[12px] font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition shadow-xs disabled:opacity-40"
-              >
-                Gửi yêu cầu bổ sung
-              </button>
-            )}
-            {mode === 'reject' && (
-              <button
-                onClick={handleReject}
-                disabled={!reason.trim()}
-                className="h-8 px-4 text-[12px] font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition shadow-xs disabled:opacity-40"
-              >
-                Từ chối tiếp nhận
-              </button>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
@@ -682,17 +514,10 @@ export default function ProjectListPage() {
   const [selectedField, setSelectedField] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [drawerProjectId, setDrawerProjectId] = useState<string | null>(null);
-  
-  // Legacy Modals State
-  const [approveModalProjectId, setApproveModalProjectId] = useState<string | null>(null);
-  const [minutesModalProject, setMinutesModalProject] = useState<{id: string, title: string, pi: string} | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const { currentUser } = useAuth();
-
-  // ── Modal: Kiểm tra hồ sơ hành chính ──
-  const [adminReviewModal, setAdminReviewModal] = useState<{ open: boolean; projectId: string | null }>({ open: false, projectId: null });
 
   // ── Unified filter reset ──
   const resetFilters = () => {
@@ -705,16 +530,11 @@ export default function ProjectListPage() {
     setCurrentPage(1);
   };
 
-  const handleExportDoc = (project: any) => {
+  const handleExportDoc = (project: ResearchProject) => {
     DocxExportService.exportProposalDocx(project);
   };
 
-  const handleViewAttachments = (project: any) => {
-    if (!project.documents || project.documents.length === 0) {
-      alert('Đề tài này hiện chưa có tài liệu đính kèm nào.');
-      return;
-    }
-    // Navigate to project detail document tab
+  const handleViewAttachments = (project: ResearchProject) => {
     window.open(`/projects/${project.id}#documents`, '_blank');
   };
 
@@ -760,11 +580,12 @@ export default function ProjectListPage() {
   const totalEstimated = filtered.reduce((acc, p) => acc + (p.estimatedBudget || 0), 0);
   const totalApproved = filtered.reduce((acc, p) => acc + (p.approvedBudget || 0), 0);
 
-  const displayStatus = (p: any): string => {
-    if (p.status === 'UNDER_REVIEW') {
-      if (p.proposalStatus === 'SUBMITTED') return 'SUBMITTED_PROPOSAL';
-      if (p.proposalStatus === 'REVISION_REQUIRED') return 'REVISION_REQUIRED';
-      if (p.proposalStatus === 'ADMIN_VALIDATED' || p.proposalStatus === 'VALID') return 'ADMIN_VALIDATED';
+  const displayStatus = (p: ResearchProject): string => {
+    if (
+      p.status === 'SUBMITTED' &&
+      p.proposalStatus !== 'DRAFT'
+    ) {
+      return p.proposalStatus;
     }
     return p.status;
   };
@@ -824,10 +645,8 @@ export default function ProjectListPage() {
             label: 'Trạng thái', value: selectedStatus, onChange: setSelectedStatus,
             options: [
               { value: 'DRAFT', label: 'Tạo nháp' },
-              { value: 'UNDER_REVIEW', label: 'Đang thẩm định' },
-              { value: 'APPROVED', label: 'Đã duyệt đề cương' },
-              { value: 'WAITING_ASSIGNMENT', label: 'Chờ giao nhiệm vụ' },
-              { value: 'ASSIGNED', label: 'Đã giao nhiệm vụ' },
+              { value: 'SUBMITTED', label: 'Đang xử lý hồ sơ' },
+              { value: 'WAITING_ASSIGNMENT', label: 'Chờ giao thực hiện' },
               { value: 'IN_PROGRESS', label: 'Đang thực hiện' },
               { value: 'WAITING_ACCEPTANCE', label: 'Chờ nghiệm thu' },
               { value: 'ACCEPTED', label: 'Đã nghiệm thu' },
@@ -987,9 +806,7 @@ export default function ProjectListPage() {
                           status={p.status}
                           proposalStatus={p.proposalStatus}
                           role={currentUser.role}
-                          onAdminReview={() => setAdminReviewModal({ open: true, projectId: p.id })}
-                          onApproveProposal={() => setApproveModalProjectId(p.proposalCode || p.id)}
-                          onCreateMinutes={() => setMinutesModalProject({ id: p.id, title: p.title, pi: p.principalInvestigatorName })}
+                          onAdminReview={() => window.location.assign(`/review?id=${p.id}`)}
                           onExportDoc={() => handleExportDoc(p)}
                           onViewAttachments={() => handleViewAttachments(p)}
                         />
@@ -1040,28 +857,6 @@ export default function ProjectListPage() {
         />
       )}
 
-      {/* ── Modal: Kiểm tra hồ sơ hành chính ── */}
-      {adminReviewModal.open && adminReviewModal.projectId && (
-        <AdminReviewDialog
-          projectId={adminReviewModal.projectId}
-          onClose={() => setAdminReviewModal({ open: false, projectId: null })}
-        />
-      )}
-
-      {/* ── Modal: Duyệt đề xuất (Legacy UX) ── */}
-      <ApproveProposalModal 
-        isOpen={!!approveModalProjectId} 
-        onClose={() => setApproveModalProjectId(null)} 
-        projectCode={approveModalProjectId || ''} 
-      />
-
-      {/* ── Modal: Tạo biên bản họp (Legacy UX) ── */}
-      <CreateMeetingMinutesModal 
-        isOpen={!!minutesModalProject} 
-        onClose={() => setMinutesModalProject(null)} 
-        projectTitle={minutesModalProject?.title || ''} 
-        piName={minutesModalProject?.pi || ''}
-      />
     </div>
   );
 }

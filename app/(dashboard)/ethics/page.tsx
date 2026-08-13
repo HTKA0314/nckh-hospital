@@ -1,319 +1,909 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import {
+  CheckCircle2,
+  CircleAlert,
+  Eye,
+  FileText,
+  History,
+  Search,
+  Send,
+  ShieldCheck,
+  User,
+  X,
+} from 'lucide-react';
+
 import { repo } from '@/lib/repository';
 import { useAuth } from '@/lib/auth-context';
+import { useToast } from '@/components/ui/Toast';
 import { PageHeader } from '@/components/common/PageHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import {
-  ShieldCheck,
-  Search,
-  Download,
-  Printer,
-  X,
-  Eye,
-  Edit
-} from 'lucide-react';
-import Link from 'next/link';
-import { ResearchProject } from '@/lib/types';
+  AuditLog,
+  EthicsStatus,
+  ProjectDocument,
+  ResearchProject,
+} from '@/lib/types';
 
-// ==========================================
-// 1. RESEARCHER VIEW
-// ==========================================
-function ResearcherEthicsView({ projects }: { projects: ResearchProject[] }) {
+type EthicsFilter =
+  | 'ALL'
+  | 'SCREENING_IN_PROGRESS'
+  | 'DOSSIER_SUBMITTED'
+  | 'UNDER_ETHICS_REVIEW'
+  | 'ETHICS_REVISION_REQUIRED'
+  | 'ETHICS_APPROVED';
+
+type DetailTab = 'OVERVIEW' | 'DOCUMENTS' | 'HISTORY';
+
+const FILTERS: Array<{ id: EthicsFilter; label: string }> = [
+  { id: 'ALL', label: 'Tất cả' },
+  { id: 'SCREENING_IN_PROGRESS', label: 'Đang sàng lọc' },
+  { id: 'DOSSIER_SUBMITTED', label: 'Chờ tiếp nhận' },
+  { id: 'UNDER_ETHICS_REVIEW', label: 'Đang thẩm định' },
+  { id: 'ETHICS_REVISION_REQUIRED', label: 'Cần bổ sung' },
+  { id: 'ETHICS_APPROVED', label: 'Đã chấp thuận' },
+];
+
+export default function EthicsWorkspacePage() {
+  const { currentUser } = useAuth();
+  const { success, warning, error } = useToast();
+
+  const [filter, setFilter] = useState<EthicsFilter>('ALL');
+  const [search, setSearch] = useState('');
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [detailTab, setDetailTab] = useState<DetailTab>('OVERVIEW');
+  const [revisionNote, setRevisionNote] = useState('');
+  const [showRevisionBox, setShowRevisionBox] = useState(false);
+  const [dataVersion, setDataVersion] = useState(0);
+
+  const canProcess = currentUser?.role === 'ETHICS_OFFICE';
+  const canView =
+    canProcess ||
+    currentUser?.role === 'RESEARCH_OFFICE' ||
+    currentUser?.role === 'DIRECTOR';
+
+  const ethicsProjects = useMemo(
+    () => repo.getEthicsProjects(),
+    [dataVersion]
+  );
+
+  const filteredProjects = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return ethicsProjects.filter((project) => {
+      if (filter !== 'ALL' && project.ethicsStatus !== filter) {
+        return false;
+      }
+
+      if (!query) return true;
+
+      return [
+        project.projectCode,
+        project.proposalCode,
+        project.title,
+        project.principalInvestigatorName,
+        project.departmentName,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [ethicsProjects, filter, search]);
+
+  useEffect(() => {
+    if (filteredProjects.length === 0) {
+      setSelectedProjectId('');
+      return;
+    }
+
+    if (
+      !filteredProjects.some(
+        (project) => project.id === selectedProjectId
+      )
+    ) {
+      setSelectedProjectId(filteredProjects[0].id);
+      setDetailTab('OVERVIEW');
+      setShowRevisionBox(false);
+      setRevisionNote('');
+    }
+  }, [filteredProjects, selectedProjectId]);
+
+  const selectedProject =
+    filteredProjects.find(
+      (project) => project.id === selectedProjectId
+    ) || null;
+
+  const selectedApproval = selectedProject
+    ? repo.getEthicsApprovalByProjectId(selectedProject.id)
+    : undefined;
+
+  const selectedDocuments: ProjectDocument[] = selectedProject
+    ? repo
+        .getProjectDocuments(selectedProject.id)
+        .filter(
+          (document) =>
+            document.documentType === 'ETHICS_DOSSIER'
+        )
+    : [];
+
+  const selectedHistory: AuditLog[] = selectedProject
+    ? repo.getAuditLogs({
+        entityType: 'ETHICS',
+        entityId: selectedApproval?.id,
+      })
+    : [];
+
+  const statusCounts = useMemo(() => {
+    const count = (status: EthicsStatus) =>
+      ethicsProjects.filter(
+        (project) => project.ethicsStatus === status
+      ).length;
+
+    return {
+      ALL: ethicsProjects.length,
+      SCREENING_IN_PROGRESS: count('SCREENING_IN_PROGRESS'),
+      DOSSIER_SUBMITTED: count('DOSSIER_SUBMITTED'),
+      UNDER_ETHICS_REVIEW: count('UNDER_ETHICS_REVIEW'),
+      ETHICS_REVISION_REQUIRED: count(
+        'ETHICS_REVISION_REQUIRED'
+      ),
+      ETHICS_APPROVED: count('ETHICS_APPROVED'),
+    };
+  }, [ethicsProjects]);
+
+  const transitionEthicsStatus = (
+    project: ResearchProject,
+    nextStatus: EthicsStatus,
+    notes: string
+  ) => {
+    if (!currentUser || !canProcess) {
+      warning('Bạn không có quyền xử lý hồ sơ đạo đức.');
+      return false;
+    }
+
+    const updated = repo.transitionEthicsStatus(
+      project.id,
+      nextStatus,
+      currentUser.id,
+      notes
+    );
+
+    if (!updated) {
+      error(
+        'Không thể chuyển trạng thái. Kiểm tra lại trạng thái hiện tại và hồ sơ EthicsApproval.'
+      );
+      return false;
+    }
+
+    setDataVersion((value) => value + 1);
+    success('Đã cập nhật trạng thái hồ sơ đạo đức.');
+    return true;
+  };
+
+  const handleReceiveDossier = () => {
+    if (!selectedProject) return;
+
+    if (selectedProject.ethicsStatus !== 'DOSSIER_SUBMITTED') {
+      warning('Chỉ tiếp nhận hồ sơ đã được nộp.');
+      return;
+    }
+
+    transitionEthicsStatus(
+      selectedProject,
+      'UNDER_ETHICS_REVIEW',
+      'Tiếp nhận hồ sơ đạo đức và chuyển sang thẩm định.'
+    );
+  };
+
+  const handleRequestRevision = () => {
+    if (!selectedProject) return;
+
+    if (selectedProject.ethicsStatus !== 'UNDER_ETHICS_REVIEW') {
+      warning(
+        'Chỉ có thể yêu cầu bổ sung khi hồ sơ đang được thẩm định.'
+      );
+      return;
+    }
+
+    if (!revisionNote.trim()) {
+      warning('Vui lòng nhập nội dung cần bổ sung.');
+      return;
+    }
+
+    const updated = transitionEthicsStatus(
+      selectedProject,
+      'ETHICS_REVISION_REQUIRED',
+      `Yêu cầu bổ sung hồ sơ đạo đức: ${revisionNote.trim()}`
+    );
+
+    if (updated) {
+      setShowRevisionBox(false);
+      setRevisionNote('');
+    }
+  };
+
+  const handleApprove = () => {
+    if (!selectedProject) return;
+
+    if (selectedProject.ethicsStatus !== 'UNDER_ETHICS_REVIEW') {
+      warning(
+        'Chỉ có thể chấp thuận hồ sơ đang được thẩm định.'
+      );
+      return;
+    }
+
+    transitionEthicsStatus(
+      selectedProject,
+      'ETHICS_APPROVED',
+      'Hồ sơ đạo đức đã được chấp thuận.'
+    );
+  };
+
+  if (!canView) {
+    return (
+      <div className="mx-auto max-w-4xl p-6">
+        <div className="rounded-xl border border-slate-200 bg-white p-10 text-center">
+          <ShieldCheck className="mx-auto h-9 w-9 text-slate-300" />
+          <h1 className="mt-3 text-base font-semibold text-slate-900">
+            Không có quyền truy cập workspace đạo đức
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Nghiên cứu viên theo dõi hồ sơ đạo đức từ trang chi tiết đề tài.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-4 max-w-4xl mx-auto text-slate-800">
+    <div className="mx-auto max-w-[1500px] space-y-4 p-6 text-slate-800">
       <PageHeader
         title="Đạo đức nghiên cứu"
-        description="Theo dõi yêu cầu và hồ sơ đạo đức của các đề tài bạn tham gia."
+        description="Hàng đợi tiếp nhận, thẩm định và theo dõi hồ sơ đạo đức của các đề tài."
       />
-      
-      {projects.length === 0 ? (
-        <div className="bg-white p-12 text-center rounded-xl border border-slate-200 shadow-xs">
-          <p className="text-slate-500 font-semibold">Bạn chưa có đề tài nào cần thực hiện thủ tục đạo đức.</p>
+
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-3">
+          <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
+            {FILTERS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setFilter(item.id);
+                  setDetailTab('OVERVIEW');
+                }}
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                  filter === item.id
+                    ? 'border-sky-200 bg-sky-50 text-[#0A6EBD]'
+                    : 'border-transparent text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {item.label}
+                <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] text-slate-500">
+                  {statusCounts[item.id]}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Tìm mã, tên đề tài, chủ nhiệm..."
+              className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-9 text-sm outline-none focus:border-[#0A6EBD]"
+            />
+
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                aria-label="Xóa tìm kiếm"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         </div>
-      ) : (
-        <div className="space-y-4">
-          {projects.map((p) => {
-            const isApproved = p.ethicsStatus === 'ETHICS_APPROVED';
-            const needsRevision = p.ethicsStatus === 'ETHICS_REVISION_REQUIRED';
-            
-            return (
-              <div key={p.id} className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
-                <div className="p-4 border-b border-slate-100 flex items-start justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="font-mono font-bold text-xs text-[#0A6EBD] bg-sky-50 px-2.5 py-0.5 rounded border border-sky-100">
-                        {p.projectCode || p.proposalCode}
-                      </span>
-                      <StatusBadge status={p.ethicsStatus} />
-                    </div>
-                    <h3 className="font-bold text-slate-900 leading-snug">{p.title}</h3>
-                  </div>
-                </div>
-                
-                <div className="p-4 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="space-y-1.5 text-[13px]">
-                    <p className="text-slate-600">Yêu cầu đạo đức: <strong className="text-slate-900">Có</strong></p>
-                    {isApproved && (
-                      <>
-                        <p className="text-slate-600">Giấy chấp thuận: <strong className="font-mono text-emerald-700">IRB-{p.id}/25</strong></p>
-                        <p className="text-slate-600">Ngày chấp thuận: <strong className="text-slate-900">20/03/2025</strong></p>
-                      </>
-                    )}
-                    {needsRevision && (
-                      <div className="mt-2 text-rose-700 bg-rose-50 p-2 rounded-lg border border-rose-100">
-                        <span className="font-semibold block">Công việc cần thực hiện:</span>
-                        Bổ sung tài liệu theo yêu cầu Hội đồng ngày 15/03/2025.
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="shrink-0 flex items-center gap-2">
-                    {needsRevision ? (
-                      <Link
-                        href={`/projects/${p.id}/ethics`}
-                        className="px-4 py-2 bg-[#0A6EBD] text-white text-[13px] font-bold rounded-lg hover:bg-[#085896] transition shadow-xs inline-flex items-center gap-1.5"
-                      >
-                        <Edit className="w-4 h-4" /> Bổ sung hồ sơ
-                      </Link>
-                    ) : (
-                      <Link
-                        href={`/projects/${p.id}`}
-                        className="px-4 py-2 bg-white border border-slate-300 text-slate-700 text-[13px] font-bold rounded-lg hover:bg-slate-50 transition shadow-xs inline-flex items-center gap-1.5"
-                      >
-                        <Eye className="w-4 h-4" /> Xem hồ sơ
-                      </Link>
-                    )}
-                  </div>
-                </div>
+
+        <div className="grid min-h-[650px] grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)]">
+          <aside className="border-b border-slate-200 lg:border-b-0 lg:border-r">
+            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Hồ sơ đạo đức
               </div>
-            );
-          })}
+              <div className="mt-0.5 text-xs text-slate-400">
+                {filteredProjects.length} hồ sơ
+              </div>
+            </div>
+
+            <div className="max-h-[650px] overflow-y-auto">
+              {filteredProjects.length === 0 ? (
+                <div className="px-4 py-10 text-center">
+                  <FileText className="mx-auto h-7 w-7 text-slate-300" />
+                  <p className="mt-2 text-sm text-slate-400">
+                    Không có hồ sơ phù hợp.
+                  </p>
+                </div>
+              ) : (
+                filteredProjects.map((project) => {
+                  const selected =
+                    selectedProject?.id === project.id;
+
+                  return (
+                    <button
+                      key={project.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedProjectId(project.id);
+                        setDetailTab('OVERVIEW');
+                        setShowRevisionBox(false);
+                        setRevisionNote('');
+                      }}
+                      className={`block w-full border-b border-slate-100 border-l-4 px-4 py-3 text-left transition ${
+                        selected
+                          ? 'border-l-[#0A6EBD] bg-sky-50/60'
+                          : 'border-l-transparent hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-xs font-semibold text-[#0A6EBD]">
+                          {project.projectCode ||
+                            project.proposalCode ||
+                            '—'}
+                        </span>
+                        <StatusBadge status={project.ethicsStatus} />
+                      </div>
+
+                      <p className="mt-1.5 line-clamp-2 text-sm font-semibold leading-5 text-slate-900">
+                        {project.title}
+                      </p>
+
+                      <p className="mt-1 truncate text-xs text-slate-500">
+                        {project.principalInvestigatorName}
+                      </p>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </aside>
+
+          <main className="min-w-0">
+            {!selectedProject ? (
+              <EmptySelection />
+            ) : (
+              <>
+                <div className="border-b border-slate-200 px-5 py-4">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs font-semibold text-[#0A6EBD]">
+                          {selectedProject.projectCode ||
+                            selectedProject.proposalCode ||
+                            '—'}
+                        </span>
+                        <StatusBadge
+                          status={selectedProject.ethicsStatus}
+                        />
+                      </div>
+
+                      <h2 className="mt-2 text-base font-semibold leading-6 text-slate-900">
+                        {selectedProject.title}
+                      </h2>
+
+                      <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
+                        <span className="inline-flex items-center gap-1.5">
+                          <User className="h-3.5 w-3.5" />
+                          {selectedProject.principalInvestigatorName}
+                        </span>
+                        <span>
+                          {selectedProject.departmentName || '—'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <Link
+                      href={`/projects/${selectedProject.id}`}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      Xem đề tài
+                    </Link>
+                  </div>
+
+                  <div className="mt-4 flex gap-1 border-b border-slate-200">
+                    {[
+                      { id: 'OVERVIEW', label: 'Thông tin' },
+                      { id: 'DOCUMENTS', label: 'Tài liệu' },
+                      { id: 'HISTORY', label: 'Lịch sử' },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() =>
+                          setDetailTab(tab.id as DetailTab)
+                        }
+                        className={`border-b-2 px-3 py-2 text-xs font-semibold transition ${
+                          detailTab === tab.id
+                            ? 'border-[#0A6EBD] text-[#0A6EBD]'
+                            : 'border-transparent text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-5">
+                  {detailTab === 'OVERVIEW' && (
+                    <OverviewTab
+                      project={selectedProject}
+                      approval={selectedApproval}
+                      canProcess={canProcess}
+                      showRevisionBox={showRevisionBox}
+                      revisionNote={revisionNote}
+                      onRevisionNoteChange={setRevisionNote}
+                      onShowRevision={() => setShowRevisionBox(true)}
+                      onCancelRevision={() => {
+                        setShowRevisionBox(false);
+                        setRevisionNote('');
+                      }}
+                      onReceive={handleReceiveDossier}
+                      onRequestRevision={handleRequestRevision}
+                      onApprove={handleApprove}
+                    />
+                  )}
+
+                  {detailTab === 'DOCUMENTS' && (
+                    <DocumentsTab documents={selectedDocuments} />
+                  )}
+
+                  {detailTab === 'HISTORY' && (
+                    <HistoryTab history={selectedHistory} />
+                  )}
+                </div>
+              </>
+            )}
+          </main>
         </div>
+      </section>
+    </div>
+  );
+}
+
+function OverviewTab({
+  project,
+  approval,
+  canProcess,
+  showRevisionBox,
+  revisionNote,
+  onRevisionNoteChange,
+  onShowRevision,
+  onCancelRevision,
+  onReceive,
+  onRequestRevision,
+  onApprove,
+}: {
+  project: ResearchProject;
+  approval: ReturnType<typeof repo.getEthicsApprovalByProjectId>;
+  canProcess: boolean;
+  showRevisionBox: boolean;
+  revisionNote: string;
+  onRevisionNoteChange: (value: string) => void;
+  onShowRevision: () => void;
+  onCancelRevision: () => void;
+  onReceive: () => void;
+  onRequestRevision: () => void;
+  onApprove: () => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <InfoItem
+          label="Yêu cầu đạo đức"
+          value={project.ethicsRequired ? 'Có' : 'Không'}
+        />
+        <InfoItem
+          label="Trạng thái"
+          value={<StatusBadge status={project.ethicsStatus} />}
+        />
+        <InfoItem
+          label="Loại thẩm định"
+          value={formatReviewType(approval?.reviewType)}
+        />
+        <InfoItem
+          label="Số chấp thuận"
+          value={approval?.decisionNumber || '—'}
+        />
+        <InfoItem
+          label="Ngày chấp thuận"
+          value={approval?.approvalDate || '—'}
+        />
+        <InfoItem
+          label="Ngày hết hạn"
+          value={approval?.expiryDate || '—'}
+        />
+      </section>
+
+      <section className="rounded-xl border border-slate-200">
+        <div className="border-b border-slate-200 px-4 py-3">
+          <h3 className="text-sm font-semibold text-slate-900">
+            Trạng thái xử lý hồ sơ
+          </h3>
+        </div>
+        <div className="p-4">
+          <EthicsStatusSummary status={project.ethicsStatus} />
+        </div>
+      </section>
+
+      {canProcess && (
+        <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <h3 className="text-sm font-semibold text-slate-900">
+            Thao tác nghiệp vụ
+          </h3>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {project.ethicsStatus === 'SCREENING_IN_PROGRESS' && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                Hồ sơ đang ở bước sàng lọc. Chưa có thao tác thẩm định cho đến khi hồ sơ đạo đức được nộp.
+              </div>
+            )}
+
+            {project.ethicsStatus === 'DOSSIER_SUBMITTED' && (
+              <button
+                type="button"
+                onClick={onReceive}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#0A6EBD] px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-[#085896]"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Tiếp nhận hồ sơ
+              </button>
+            )}
+
+            {project.ethicsStatus === 'UNDER_ETHICS_REVIEW' && (
+              <>
+                <button
+                  type="button"
+                  onClick={onShowRevision}
+                  className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-3.5 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+                >
+                  <CircleAlert className="h-4 w-4" />
+                  Yêu cầu bổ sung
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onApprove}
+                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Chấp thuận
+                </button>
+              </>
+            )}
+
+            {project.ethicsStatus === 'ETHICS_REVISION_REQUIRED' && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                Đang chờ Chủ nhiệm bổ sung và nộp lại hồ sơ.
+              </div>
+            )}
+
+            {project.ethicsStatus === 'ETHICS_APPROVED' && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                Hồ sơ đã được chấp thuận.
+              </div>
+            )}
+          </div>
+
+          {showRevisionBox && (
+            <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3">
+              <label
+                htmlFor="revision-note"
+                className="block text-sm font-medium text-rose-800"
+              >
+                Nội dung cần bổ sung
+              </label>
+
+              <textarea
+                id="revision-note"
+                value={revisionNote}
+                onChange={(event) =>
+                  onRevisionNoteChange(event.target.value)
+                }
+                rows={4}
+                placeholder="Nêu rõ tài liệu hoặc nội dung cần bổ sung..."
+                className="mt-2 w-full resize-none rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm outline-none focus:border-rose-400"
+              />
+
+              <div className="mt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={onCancelRevision}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700"
+                >
+                  Hủy
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onRequestRevision}
+                  className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white"
+                >
+                  <Send className="h-4 w-4" />
+                  Gửi yêu cầu
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
       )}
     </div>
   );
 }
 
-// ==========================================
-// 2. ADMIN/RESEARCH OFFICE VIEW
-// ==========================================
-function AdminEthicsWorkspace({ projects }: { projects: ResearchProject[] }) {
-  const [search, setSearch] = useState('');
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id || '');
-  const [filter, setFilter] = useState('ALL');
-
-  const filteredProjects = projects.filter((p) => {
-    if (filter !== 'ALL' && p.ethicsStatus !== filter) return false;
-    
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      return (
-        p.title.toLowerCase().includes(q) ||
-        p.proposalCode.toLowerCase().includes(q) ||
-        (p.projectCode && p.projectCode.toLowerCase().includes(q)) ||
-        p.principalInvestigatorName.toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
-
-  const project = repo.getProjectById(selectedProjectId) || filteredProjects[0];
+function DocumentsTab({
+  documents,
+}: {
+  documents: ProjectDocument[];
+}) {
+  if (documents.length === 0) {
+    return (
+      <div className="rounded-xl border border-slate-200 p-8 text-center">
+        <FileText className="mx-auto h-8 w-8 text-slate-300" />
+        <p className="mt-3 text-sm font-medium text-slate-700">
+          Chưa có tài liệu hồ sơ đạo đức
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-3 text-slate-800">
-      <PageHeader
-        title="Quản lý Hồ sơ Đạo đức Y sinh"
-        description="Hàng đợi xử lý hồ sơ đạo đức toàn viện dành cho Phòng Quản lý NCKH"
-        actions={
-          <button
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[13px] font-semibold shadow-xs transition whitespace-nowrap"
-          >
-            <Printer className="w-3.5 h-3.5" /> In báo cáo
-          </button>
-        }
-      />
+    <div className="overflow-hidden rounded-xl border border-slate-200">
+      <div className="divide-y divide-slate-100">
+        {documents.map((document) => {
+          const currentVersion = document.versions.find(
+            (version) => version.isCurrent
+          );
 
-      {/* Filter Tabs & Search */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-2 flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
-          {[
-            { id: 'ALL', label: 'Tất cả' },
-            { id: 'WAITING_ETHICS_SCREENING', label: 'Chờ sàng lọc' },
-            { id: 'UNDER_ETHICS_REVIEW', label: 'Đang thẩm định' },
-            { id: 'ETHICS_REVISION_REQUIRED', label: 'Cần bổ sung' },
-            { id: 'ETHICS_APPROVED', label: 'Đã chấp thuận' }
-          ].map(f => (
-            <button
-              key={f.id}
-              onClick={() => setFilter(f.id)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition whitespace-nowrap ${
-                filter === f.id ? 'bg-[#EBF4FC] text-[#0A6EBD] border border-[#B8D7F5]' : 'text-slate-600 hover:bg-slate-100 border border-transparent'
-              }`}
+          return (
+            <div
+              key={document.id}
+              className="flex items-center justify-between gap-4 px-4 py-3"
             >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        
-        <div className="flex-1 min-w-[200px]">
-          <div className="relative w-full sm:max-w-xs ml-auto">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Tìm mã, tên đề tài..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-8 py-1.5 rounded-lg border border-slate-300 focus:border-[#0A6EBD] outline-none text-xs"
-            />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
-        {/* Hàng đợi (4 / 12) */}
-        <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="p-3 bg-[#F8FAFC] border-b border-slate-200 font-bold text-[11px] uppercase tracking-wider text-slate-500">
-            HỒ SƠ ĐẠO ĐỨC ({filteredProjects.length})
-          </div>
-          <div className="divide-y divide-slate-100 max-h-[650px] overflow-y-auto">
-            {filteredProjects.length === 0 ? (
-              <div className="p-6 text-center text-slate-400 text-xs">
-                Không có hồ sơ nào.
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900">
+                  {document.title}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Phiên bản {document.currentVersion}
+                  {currentVersion?.fileName
+                    ? ` · ${currentVersion.fileName}`
+                    : ''}
+                </p>
               </div>
-            ) : (
-              filteredProjects.map((p) => {
-                const isSelected = (project?.id === p.id);
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => setSelectedProjectId(p.id)}
-                    className={`p-3 cursor-pointer transition ${
-                      isSelected
-                        ? 'bg-[#EBF4FC]/70 border-l-4 border-l-[#0A6EBD]'
-                        : 'hover:bg-slate-50 border-l-4 border-l-transparent'
-                    }`}
+
+              {currentVersion?.downloadUrl &&
+                currentVersion.downloadUrl !== '#' && (
+                  <a
+                    href={currentVersion.downloadUrl}
+                    className="shrink-0 text-xs font-semibold text-[#0A6EBD] hover:underline"
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-mono font-bold text-xs text-[#0A6EBD]">{p.projectCode || p.proposalCode}</span>
-                    </div>
-                    <p className="font-semibold text-xs text-slate-900 line-clamp-2">{p.title}</p>
-                    <div className="flex items-center justify-between mt-1.5">
-                      <span className="text-[11px] text-slate-500 truncate">{p.principalInvestigatorName}</span>
-                      <StatusBadge status={p.ethicsStatus} />
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        {/* Nội dung chi tiết (8 / 12) */}
-        {project ? (
-          <div className="lg:col-span-8 space-y-3">
-            <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-4 space-y-3">
-              <div className="flex justify-between items-start">
-                <div>
-                  <span className="font-mono font-bold text-xs bg-[#EBF4FC] text-[#0A6EBD] px-2 py-0.5 rounded border border-[#B8D7F5] mb-2 inline-block">
-                    {project.projectCode || project.proposalCode}
-                  </span>
-                  <h2 className="text-sm font-bold text-slate-900">{project.title}</h2>
-                  <p className="text-[11px] text-slate-600 mt-1">
-                    Chủ nhiệm: <strong className="text-slate-800">{project.principalInvestigatorName}</strong> • {project.departmentName}
-                  </p>
-                </div>
-                {project.ethicsStatus === 'ETHICS_APPROVED' && (
-                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200 whitespace-nowrap">
-                    Đã chấp thuận
-                  </span>
+                    Xem tệp
+                  </a>
                 )}
-              </div>
             </div>
-
-            <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-4">
-              <h3 className="font-bold text-[13px] text-slate-800 border-b border-slate-100 pb-2 mb-3">
-                KẾT QUẢ SÀNG LỌC ĐẠO ĐỨC
-              </h3>
-              <div className="space-y-2 text-[12px] text-slate-700">
-                <div className="flex justify-between p-2 bg-slate-50 rounded">
-                  <span>Có sử dụng người tham gia nghiên cứu</span>
-                  <strong className="text-rose-600">Có</strong>
-                </div>
-                <div className="flex justify-between p-2 bg-slate-50 rounded">
-                  <span>Có can thiệp</span>
-                  <strong className="text-rose-600">Có</strong>
-                </div>
-                <div className="flex justify-between p-2 bg-slate-50 rounded">
-                  <span>Có thu thập mẫu sinh học</span>
-                  <strong className="text-rose-600">Có</strong>
-                </div>
-                <div className="mt-4 p-3 bg-[#EBF4FC] rounded-lg border border-[#B8D7F5]">
-                  <span className="font-bold text-[#0A6EBD] block mb-1">Kết luận:</span>
-                  Yêu cầu xem xét đạo đức (Hội đồng Đạo đức Y sinh)
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-4">
-              <h3 className="font-bold text-[13px] text-slate-800 border-b border-slate-100 pb-2 mb-3">
-                HỒ SƠ ĐẠO ĐỨC ĐÍNH KÈM
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                {['Đề cương nghiên cứu', 'Phiếu thông tin cho ĐTNC', 'Phiếu đồng thuận', 'Cam kết bảo mật'].map((doc, idx) => (
-                  <div key={idx} className="flex items-center gap-2 p-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
-                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                    <span className="truncate">{doc}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            {project.ethicsStatus === 'ETHICS_APPROVED' && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between">
-                <div>
-                  <h4 className="font-bold text-emerald-900 text-sm">Quyết định / Giấy chấp thuận</h4>
-                  <p className="text-xs text-emerald-700 mt-0.5">IRB-{project.id}/25 • Có hiệu lực đến 31/12/2026</p>
-                </div>
-                <button className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg inline-flex items-center gap-1.5 shadow-xs transition">
-                  <Download className="w-3.5 h-3.5" /> Tải về
-                </button>
-              </div>
-            )}
-          </div>
-        ) : null}
+          );
+        })}
       </div>
     </div>
   );
 }
 
-// ==========================================
-// 3. MAIN PAGE EXPORT (ROLE ROUTER)
-// ==========================================
-export default function EthicsWorkspacePage() {
-  const { currentUser } = useAuth();
-  const allProjects = repo.getProjects();
-  
-  if (['ADMIN', 'RESEARCH_OFFICE', 'DIRECTOR'].includes(currentUser.role)) {
-    // Admin sees all projects that require ethics
-    const ethicsProjects = allProjects.filter(p => p.ethicsRequired);
-    return <AdminEthicsWorkspace projects={ethicsProjects} />;
-  } else {
-    // Researcher sees only their projects
-    const myEthicsProjects = allProjects.filter(p => 
-      (p.principalInvestigatorId === currentUser.id || p.principalInvestigatorName === currentUser.fullName) && 
-      p.ethicsRequired
+function HistoryTab({ history }: { history: AuditLog[] }) {
+  if (history.length === 0) {
+    return (
+      <div className="rounded-xl border border-slate-200 p-8 text-center">
+        <History className="mx-auto h-8 w-8 text-slate-300" />
+        <p className="mt-3 text-sm font-medium text-slate-700">
+          Chưa có lịch sử xử lý đạo đức
+        </p>
+      </div>
     );
-    return <ResearcherEthicsView projects={myEthicsProjects} />;
   }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200">
+      <div className="divide-y divide-slate-100">
+        {history.map((item) => (
+          <div key={item.id} className="px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-slate-800">
+                {item.actionCode}
+              </p>
+              <span className="text-xs text-slate-400">
+                {item.timestamp}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              {item.userFullName}
+            </p>
+            {item.notes && (
+              <p className="mt-1.5 text-sm text-slate-600">
+                {item.notes}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EmptySelection() {
+  return (
+    <div className="flex min-h-[500px] items-center justify-center p-8 text-center">
+      <div>
+        <ShieldCheck className="mx-auto h-9 w-9 text-slate-300" />
+        <p className="mt-3 text-sm text-slate-500">
+          Chọn một hồ sơ để xem chi tiết.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function InfoItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="text-xs font-medium text-slate-500">
+        {label}
+      </div>
+      <div className="mt-1 text-sm font-semibold text-slate-800">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function EthicsStatusSummary({
+  status,
+}: {
+  status: EthicsStatus;
+}) {
+  if (status === 'SCREENING_IN_PROGRESS') {
+    return (
+      <StatusMessage
+        tone="amber"
+        title="Đang sàng lọc"
+        description="Đang xác định nghiên cứu có thuộc diện phải thẩm định đạo đức hay không."
+      />
+    );
+  }
+
+  if (status === 'DOSSIER_SUBMITTED') {
+    return (
+      <StatusMessage
+        tone="blue"
+        title="Hồ sơ đã nộp"
+        description="Hồ sơ đạo đức đã được nộp và đang chờ bộ phận phụ trách tiếp nhận."
+      />
+    );
+  }
+
+  if (status === 'UNDER_ETHICS_REVIEW') {
+    return (
+      <StatusMessage
+        tone="blue"
+        title="Đang thẩm định"
+        description="Hồ sơ đang được xem xét. Có thể yêu cầu bổ sung hoặc ghi nhận kết quả thẩm định."
+      />
+    );
+  }
+
+  if (status === 'ETHICS_REVISION_REQUIRED') {
+    return (
+      <StatusMessage
+        tone="rose"
+        title="Cần bổ sung"
+        description="Hồ sơ đã được yêu cầu bổ sung trước khi tiếp tục thẩm định."
+      />
+    );
+  }
+
+  if (status === 'CONDITIONALLY_APPROVED') {
+    return (
+      <StatusMessage
+        tone="amber"
+        title="Chấp thuận có điều kiện"
+        description="Hồ sơ đã được chấp thuận có điều kiện và cần hoàn thiện các yêu cầu còn lại."
+      />
+    );
+  }
+
+  if (status === 'ETHICS_APPROVED') {
+    return (
+      <StatusMessage
+        tone="emerald"
+        title="Đã chấp thuận"
+        description="Hồ sơ đạo đức đã được chấp thuận."
+      />
+    );
+  }
+
+  if (status === 'EXPIRED') {
+    return (
+      <StatusMessage
+        tone="rose"
+        title="Hết hiệu lực"
+        description="Chấp thuận đạo đức đã hết hiệu lực."
+      />
+    );
+  }
+
+  if (status === 'SUSPENDED') {
+    return (
+      <StatusMessage
+        tone="rose"
+        title="Tạm đình chỉ"
+        description="Hồ sơ/chấp thuận đạo đức đang bị tạm đình chỉ."
+      />
+    );
+  }
+
+  return (
+    <StatusMessage
+      tone="slate"
+      title="Đang theo dõi"
+      description="Không có thao tác nghiệp vụ trực tiếp cho trạng thái hiện tại."
+    />
+  );
+}
+
+function StatusMessage({
+  tone,
+  title,
+  description,
+}: {
+  tone: 'amber' | 'blue' | 'rose' | 'emerald' | 'slate';
+  title: string;
+  description: string;
+}) {
+  const tones = {
+    amber: 'border-amber-200 bg-amber-50 text-amber-800',
+    blue: 'border-sky-200 bg-sky-50 text-[#0A6EBD]',
+    rose: 'border-rose-200 bg-rose-50 text-rose-800',
+    emerald:
+      'border-emerald-200 bg-emerald-50 text-emerald-800',
+    slate: 'border-slate-200 bg-slate-50 text-slate-700',
+  };
+
+  return (
+    <div className={`rounded-lg border p-3 ${tones[tone]}`}>
+      <div className="text-sm font-semibold">{title}</div>
+      <div className="mt-1 text-sm opacity-90">{description}</div>
+    </div>
+  );
+}
+
+function formatReviewType(
+  reviewType?: 'EXEMPT' | 'EXPEDITED' | 'FULL_BOARD'
+) {
+  if (reviewType === 'EXEMPT') return 'Miễn thẩm định';
+  if (reviewType === 'EXPEDITED') return 'Thẩm định rút gọn';
+  if (reviewType === 'FULL_BOARD') return 'Hội đồng đầy đủ';
+  return '—';
 }

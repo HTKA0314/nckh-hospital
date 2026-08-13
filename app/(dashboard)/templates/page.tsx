@@ -5,15 +5,11 @@ import Link from 'next/link';
 import {
   MEDICAL_TEMPLATES_DATA,
   MedicalTemplate,
-  MedicalTemplateCategory,
-  MedicalTemplateFormat,
 } from '@/lib/mock-data/templates-data';
 import { DocxExportService } from '@/lib/services/docx-export-service';
 import { Pagination } from '@/components/ui/Pagination';
+import { useToast } from '@/components/ui/Toast';
 import {
-  BookOpen,
-  FileText,
-  FileSpreadsheet,
   Download,
   Search,
   Eye,
@@ -22,14 +18,13 @@ import {
   X,
   List,
   LayoutGrid,
-  Sparkles,
   CheckCircle2,
   FolderDown,
-  Info,
   Filter,
 } from 'lucide-react';
 
 export default function TemplatesPage() {
+  const { info } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedFormat, setSelectedFormat] = useState<string>('ALL');
@@ -70,23 +65,25 @@ export default function TemplatesPage() {
   };
 
   const handleDownloadAll = () => {
-    alert('Đang nén và chuẩn bị tải xuống trọn bộ 11 Biểu mẫu NCKH Y tế chuẩn Thông tư 09/2024 & Thông tư 43/2024...');
+    info('Đang nén và chuẩn bị tải xuống trọn bộ Biểu mẫu NCKH Y tế chuẩn Thông tư 09/2024 & TT 43/2024...');
   };
 
   return (
     <div className="space-y-3 text-slate-800">
-      {/* ── HEADER: Tiêu đề trang + Actions ── */}
+      {/* ── HEADER ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4 select-none">
         <div>
           <h1 className="text-base font-bold text-slate-800">Kho tài liệu & Biểu mẫu</h1>
-          <p className="text-[12px] text-slate-500 mt-0.5">Hệ thống biểu mẫu, văn bản hướng dẫn và căn cứ pháp lý về hoạt động Nghiên cứu Khoa học</p>
+          <p className="text-[12px] text-slate-500 mt-0.5">
+            Hệ thống biểu mẫu, văn bản hướng dẫn và căn cứ pháp lý về hoạt động Nghiên cứu Khoa học
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           {/* View Mode Switcher */}
           <div className="flex items-center border border-slate-300 rounded-lg p-0.5 bg-slate-50 shrink-0">
             <button
               onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded-md text-xs font-medium transition ${
+              className={`p-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
                 viewMode === 'grid'
                   ? 'bg-white text-[#0A6EBD] shadow-2xs font-semibold'
                   : 'text-slate-500 hover:text-slate-800'
@@ -97,7 +94,7 @@ export default function TemplatesPage() {
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded-md text-xs font-medium transition ${
+              className={`p-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
                 viewMode === 'table'
                   ? 'bg-white text-[#0A6EBD] shadow-2xs font-semibold'
                   : 'text-slate-500 hover:text-slate-800'
@@ -110,21 +107,21 @@ export default function TemplatesPage() {
 
           <button
             onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[13px] font-semibold shadow-xs transition whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[13px] font-semibold shadow-xs transition whitespace-nowrap cursor-pointer"
           >
-            <Printer className="w-3.5 h-3.5" /> In Danh mục
+            <Printer className="w-3.5 h-3.5" /> In danh mục
           </button>
 
           <button
             onClick={handleDownloadAll}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0A6EBD] hover:bg-[#085896] text-white text-[13px] font-semibold shadow-xs transition whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0A6EBD] hover:bg-[#085896] text-white text-[13px] font-semibold shadow-xs transition whitespace-nowrap cursor-pointer"
           >
             <FolderDown className="w-4 h-4" /> Tải Trọn Bộ (ZIP)
           </button>
         </div>
       </div>
 
-      {/* ── Filter Bar ── */}
+      {/* ── FILTER BAR ── */}
       <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs px-4 py-2.5 flex flex-wrap items-center gap-2.5">
         <Filter className="w-4 h-4 text-slate-400 shrink-0" />
 
@@ -139,19 +136,19 @@ export default function TemplatesPage() {
               setSearchTerm(e.target.value);
               setCurrentPage(1);
             }}
-            className="w-full pl-9 pr-8 py-1.5 rounded-lg border border-slate-300 focus:border-[#0A6EBD] focus:ring-1 focus:ring-[#0A6EBD] text-xs outline-none bg-white transition"
+            className="w-full pl-9 pr-8 py-1.5 rounded-lg border border-slate-300 focus:border-[#0A6EBD] text-xs outline-none bg-white transition"
           />
           {searchTerm && (
             <button
               onClick={() => setSearchTerm('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-655"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
 
-        {/* Quick Category Buttons */}
+        {/* Quick Category Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
           {[
             { id: 'ALL', label: 'Tất cả' },
@@ -167,7 +164,7 @@ export default function TemplatesPage() {
                 setSelectedCategory(cat.id);
                 setCurrentPage(1);
               }}
-              className={`px-2 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+              className={`px-2 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
                 selectedCategory === cat.id
                   ? 'bg-sky-50 text-[#0A6EBD] border border-sky-200 shadow-2xs'
                   : 'text-slate-600 hover:bg-slate-50 border border-transparent'
@@ -201,7 +198,6 @@ export default function TemplatesPage() {
 
         {/* Legal Ref Selector */}
         <select
-          aria-label="Bộ lọc Căn cứ pháp lý"
           value={selectedLegalRef}
           onChange={(e) => {
             setSelectedLegalRef(e.target.value);
@@ -231,7 +227,7 @@ export default function TemplatesPage() {
               setSearchTerm('');
               setCurrentPage(1);
             }}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-100 transition-all shadow-2xs cursor-pointer"
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-100 transition shadow-2xs cursor-pointer"
           >
             <X className="w-3 h-3" /> Xóa bộ lọc
           </button>
@@ -242,11 +238,11 @@ export default function TemplatesPage() {
         </span>
       </div>
 
-      {/* ── DẠNG HIỂN THỊ 1: GRID VIEW (CARD) ── */}
+      {/* ── GRID VIEW ── */}
       {viewMode === 'grid' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {filteredTemplates.length === 0 ? (
-            <div className="col-span-full bg-white rounded-xl border border-slate-200/80 p-12 text-center text-slate-400">
+            <div className="col-span-full bg-white rounded-xl border border-slate-200/80 p-12 text-center text-slate-400 font-medium">
               Không tìm thấy biểu mẫu nào phù hợp với điều kiện tìm kiếm.
             </div>
           ) : (
@@ -287,23 +283,22 @@ export default function TemplatesPage() {
                       <span>Căn cứ: <strong>{item.legalRef}</strong></span>
                     </p>
                     <p className="text-slate-400">
-                      Phiên bản: <strong className="text-slate-600 font-mono">{item.templateVersion}</strong> • Cập nhật: {item.updatedAt} • {item.size}
+                      Phiên bản: <strong className="text-slate-600 font-mono">{item.templateVersion}</strong> • Cập nhật: {item.updatedAt}
                     </p>
                   </div>
                 </div>
 
-                {/* Footer Buttons */}
                 <div className="pt-3.5 mt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                   <button
                     onClick={() => setPreviewTemplate(item)}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-[#0A6EBD] transition"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-[#0A6EBD] transition cursor-pointer"
                   >
                     <Eye className="w-3.5 h-3.5" /> Xem trước
                   </button>
 
                   <button
                     onClick={() => handleDownload(item)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-[#0A6EBD] hover:bg-[#085999] rounded-lg transition shadow-xs"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-[#0A6EBD] hover:bg-[#085999] rounded-lg transition shadow-xs cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" /> Tải về ({item.format})
                   </button>
@@ -314,7 +309,7 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      {/* ── DẠNG HIỂN THỊ 2: TABLE VIEW ── */}
+      {/* ── TABLE VIEW ── */}
       {viewMode === 'table' && (
         <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
@@ -326,11 +321,11 @@ export default function TemplatesPage() {
                   <th className="px-4 py-3 w-48 whitespace-nowrap">NHÓM NGHIỆP VỤ</th>
                   <th className="px-4 py-3 w-56 whitespace-nowrap">CĂN CỨ PHÁP LÝ</th>
                   <th className="px-4 py-3 w-36 text-center whitespace-nowrap">ĐỊNH DẠNG</th>
-                  <th className="px-4 py-3 w-32 text-center whitespace-nowrap">NGÀY CẬP NHẬT</th>
+                  <th className="px-4 py-3 w-32 text-center whitespace-nowrap">CẬP NHẬT</th>
                   <th className="px-4 py-3 text-center w-36 whitespace-nowrap">THAO TÁC</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredTemplates.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
@@ -346,14 +341,14 @@ export default function TemplatesPage() {
                       <td className="px-4 py-3.5 align-middle">
                         <button
                           onClick={() => setPreviewTemplate(item)}
-                          className="font-semibold text-slate-900 hover:text-[#0A6EBD] text-left line-clamp-1"
+                          className="font-semibold text-slate-900 hover:text-[#0A6EBD] text-left line-clamp-1 cursor-pointer"
                         >
                           {item.name}
                         </button>
                         <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">{item.description}</p>
                       </td>
                       <td className="px-4 py-3.5 text-slate-700 whitespace-nowrap align-middle">
-                        <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                        <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
                           {item.categoryLabel}
                         </span>
                       </td>
@@ -382,14 +377,14 @@ export default function TemplatesPage() {
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => setPreviewTemplate(item)}
-                            className="p-1.5 text-slate-600 hover:text-[#0A6EBD] hover:bg-slate-100 rounded-md transition"
+                            className="p-1.5 text-slate-600 hover:text-[#0A6EBD] hover:bg-slate-100 rounded-md transition cursor-pointer"
                             title="Xem trước cấu trúc"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleDownload(item)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-[#0A6EBD] hover:bg-[#085999] rounded-md transition shadow-2xs"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-[#0A6EBD] hover:bg-[#085999] rounded-md transition shadow-2xs cursor-pointer"
                           >
                             <Download className="w-3.5 h-3.5" /> Tải về
                           </button>
@@ -417,11 +412,10 @@ export default function TemplatesPage() {
         itemLabel="biểu mẫu"
       />
 
-      {/* ── MODAL XEM TRƯỚC BIỂU MẪU (PREVIEW) ── */}
+      {/* ── MODAL PREVIEW A4 VĂN BẢN HÀNH CHÍNH ── */}
       {previewTemplate && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 text-xs">
-            {/* Modal Header */}
+          <div className="bg-white rounded-xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in duration-200 text-xs">
             <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="font-mono font-bold text-xs text-[#0A6EBD] bg-white px-2.5 py-0.5 rounded border border-sky-200">
@@ -431,15 +425,13 @@ export default function TemplatesPage() {
               </div>
               <button
                 onClick={() => setPreviewTemplate(null)}
-                className="w-7 h-7 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 font-bold flex items-center justify-center transition"
+                className="w-7 h-7 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 font-bold flex items-center justify-center transition cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
-              {/* Giả lập tài liệu văn bản Bộ Y tế */}
               <div className="p-5 bg-[#FAFCFF] rounded-xl border border-slate-200 shadow-inner space-y-3 font-serif">
                 <div className="flex justify-between border-b border-slate-200 pb-3 text-[11px] font-sans">
                   <div>
@@ -469,7 +461,7 @@ export default function TemplatesPage() {
                   <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-1.5">
                     <p className="font-bold text-slate-900 mb-1">Cấu trúc các trường thông tin bắt buộc:</p>
                     {previewTemplate.previewSummary.map((sum, idx) => (
-                      <div key={idx} className="flex items-start gap-2 text-slate-700">
+                      <div key={idx} className="flex items-start gap-2 text-slate-700 font-sans">
                         <CheckCircle2 className="w-3.5 h-3.5 text-[#0A6EBD] shrink-0 mt-0.5" />
                         <span>{sum}</span>
                       </div>
@@ -479,15 +471,14 @@ export default function TemplatesPage() {
               </div>
             </div>
 
-            {/* Modal Footer */}
             <div className="p-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
               <span className="text-slate-500 text-xs">
-                Định dạng gốc: <strong className="text-slate-800 font-mono">{previewTemplate.format}</strong> ({previewTemplate.size})
+                Định dạng: <strong className="text-slate-800 font-mono">{previewTemplate.format}</strong> ({previewTemplate.size})
               </span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPreviewTemplate(null)}
-                  className="px-3.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-white font-semibold transition"
+                  className="px-3.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-white font-semibold transition cursor-pointer"
                 >
                   Đóng lại
                 </button>
@@ -496,7 +487,7 @@ export default function TemplatesPage() {
                     handleDownload(previewTemplate);
                     setPreviewTemplate(null);
                   }}
-                  className="px-4 py-1.5 rounded-lg bg-[#0A6EBD] hover:bg-[#085896] text-white font-semibold shadow-xs transition flex items-center gap-1.5"
+                  className="px-4 py-1.5 rounded-lg bg-[#0A6EBD] hover:bg-[#085896] text-white font-semibold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" /> Tải Biểu Mẫu Này
                 </button>

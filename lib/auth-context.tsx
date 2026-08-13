@@ -1,67 +1,128 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, Role } from '@/lib/types';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
+import { Role, User } from '@/lib/types';
 import { repo } from '@/lib/repository';
 
 interface AuthContextType {
   currentUser: User;
   setCurrentUser: (user: User) => void;
+
+  /**
+   * Chỉ dùng cho mock/demo để chuyển sang
+   * một user đại diện có role tương ứng.
+   *
+   * Không dùng hàm này để cấp quyền nghiệp vụ.
+   */
   switchRole: (role: Role) => void;
+
   allUsers: User[];
 }
 
-const defaultUser: User = repo.getUsers()[0]; // Mặc định BS.CKII Nguyễn Văn An (RESEARCHER)
+const users = repo.getUsers();
 
-const AuthContext = createContext<AuthContextType>({
-  currentUser: defaultUser,
-  setCurrentUser: () => {},
-  switchRole: () => {},
-  allUsers: [],
-});
+if (users.length === 0) {
+  throw new Error(
+    'Mock repository phải có ít nhất một User để khởi tạo AuthContext.'
+  );
+}
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User>(defaultUser);
-  const [allUsers, setAllUsers] = useState<User[]>([]);
+const defaultUser = users[0];
+
+const AuthContext = createContext<AuthContextType | null>(
+  null
+);
+
+export function AuthProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [currentUser, setCurrentUserState] =
+    useState<User>(defaultUser);
+
+  const [allUsers, setAllUsers] =
+    useState<User[]>(users);
 
   useEffect(() => {
-    const users = repo.getUsers();
-    setAllUsers(users);
-    
-    // Load từ localStorage nếu có
-    const savedUserId = typeof window !== 'undefined' ? localStorage.getItem('crms_user_id') : null;
-    if (savedUserId) {
-      const found = users.find((u) => u.id === savedUserId);
-      if (found) setCurrentUser(found);
+    const repositoryUsers = repo.getUsers();
+
+    if (repositoryUsers.length === 0) {
+      return;
+    }
+
+    setAllUsers(repositoryUsers);
+
+    const savedUserId = window.localStorage.getItem(
+      'nckh_current_user_id'
+    );
+
+    if (!savedUserId) {
+      return;
+    }
+
+    const savedUser = repositoryUsers.find(
+      (user) => user.id === savedUserId
+    );
+
+    if (savedUser) {
+      setCurrentUserState(savedUser);
     }
   }, []);
 
   const handleSetCurrentUser = (user: User) => {
-    setCurrentUser(user);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('crms_user_id', user.id);
-    }
+    setCurrentUserState(user);
+
+    window.localStorage.setItem(
+      'nckh_current_user_id',
+      user.id
+    );
   };
 
   const switchRole = (role: Role) => {
-    const userWithRole = allUsers.find((u) => u.role === role);
-    if (userWithRole) {
-      handleSetCurrentUser(userWithRole);
+    const userWithRole = allUsers.find(
+      (user) => user.role === role
+    );
+
+    if (!userWithRole) {
+      return;
     }
+
+    handleSetCurrentUser(userWithRole);
   };
 
+  const value = useMemo<AuthContextType>(
+    () => ({
+      currentUser,
+      setCurrentUser: handleSetCurrentUser,
+      switchRole,
+      allUsers,
+    }),
+    [currentUser, allUsers]
+  );
+
   return (
-    <AuthContext.Provider
-      value={{
-        currentUser,
-        setCurrentUser: handleSetCurrentUser,
-        switchRole,
-        allUsers,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
-};
+}
 
-export const useAuth = () => useContext(AuthContext);
+export function useAuth(): AuthContextType {
+  const context = useContext(AuthContext);
+
+  if (!context) {
+    throw new Error(
+      'useAuth phải được sử dụng bên trong AuthProvider.'
+    );
+  }
+
+  return context;
+}

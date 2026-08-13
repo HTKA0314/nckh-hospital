@@ -6,22 +6,18 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { repo } from '@/lib/repository';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/Toast';
-import { ResearchProject, DocumentType } from '@/lib/types';
+import { ResearchProject, DocumentType, FundingSource, ProjectType, ResearchMemberRole, ProjectStatusHistory } from '@/lib/types';
 import { formatVND } from '@/lib/utils';
 import {
   ArrowLeft,
   CheckCircle2,
-  AlertCircle,
   Plus,
   Trash2,
   Upload,
-  Calendar,
   DollarSign,
   Save,
   FileText,
   Users,
-  Building2,
-  Sparkles,
   X,
 } from 'lucide-react';
 
@@ -35,7 +31,7 @@ export default function RegisterProjectPage() {
   // Form Wizard Step State
   const [currentStep, setCurrentStep] = useState(1);
 
-  const isManager = ['ADMIN', 'DIRECTOR', 'RESEARCH_OFFICE'].includes(currentUser.role);
+  const isManager = currentUser.role === 'RESEARCH_OFFICE';
   const backLink = isManager ? '/projects' : '/my-projects';
 
   // I. Thông tin chung
@@ -43,7 +39,7 @@ export default function RegisterProjectPage() {
   const [title, setTitle] = useState('');
   const [researchField, setResearchField] = useState('Khoa học Y Dược');
   const [managementLevel, setManagementLevel] = useState<'CẤP_CƠ_SỞ' | 'CẤP_BỘ' | 'CẤP_TỈNH' | 'CẤP_QUỐC_GIA'>('CẤP_CƠ_SỞ');
-  const [projectType, setProjectType] = useState<'NGHIÊN_CỨU_LÂM_SÀNG' | 'CAN_THIỆP_CỘNG_ĐỒNG' | 'DỊCH_TỄ_HỌC' | 'QUẢN_LÝ_Y_TẾ' | 'CẢI_TIẾN_KỸ_THUẬT'>('NGHIÊN_CỨU_LÂM_SÀNG');
+  const [projectType, setProjectType] = useState<ProjectType>('NGHIÊN_CỨU_LÂM_SÀNG');
   const [summary, setSummary] = useState('');
 
   // 10 Trường giải trình Phiếu đề xuất đề tài cấp cơ sở (sẽ chuyển sang trang Bổ sung đề cương)
@@ -56,7 +52,7 @@ export default function RegisterProjectPage() {
   const [startDate, setStartDate] = useState('2026-04-01');
   const [endDate, setEndDate] = useState('2027-03-31');
   const [estimatedBudget, setEstimatedBudget] = useState(250000000);
-  const [fundingSource, setFundingSource] = useState<'NGÂN_SÁCH_BỆNH_VIỆN' | 'TỰ_TÚC' | 'TÀI_TRỢ_NGOÀI' | 'HỖN_HỢP'>('NGÂN_SÁCH_BỆNH_VIỆN');
+  const [fundingSource, setFundingSource] = useState<FundingSource>('NGÂN_SÁCH_BỆNH_VIỆN');
   const [hasFunding, setHasFunding] = useState(true);
 
   // III. Thành viên tham gia nghiên cứu
@@ -66,7 +62,7 @@ export default function RegisterProjectPage() {
       fullName: string;
       academicRank: string;
       unit: string;
-      roleInProject: 'CHỦ_NHIỆM' | 'THƯ_KÝ_KH' | 'THÀNH_VIÊN_CHÍNH' | 'KỸ_THUẬT_VIÊN' | 'CỘNG_TÁC_VIÊN';
+      roleInProject: ResearchMemberRole;
       contributionPercentage: number;
     }[]
   >([
@@ -74,7 +70,7 @@ export default function RegisterProjectPage() {
       id: 'm-1',
       fullName: currentUser.fullName,
       academicRank: currentUser.academicTitle || 'ThS.BS',
-      unit: 'Khoa Tim mạch Can thiệp',
+      unit: departments.find((d) => d.id === (currentUser.departmentId || departments[0]?.id))?.name || '',
       roleInProject: 'CHỦ_NHIỆM',
       contributionPercentage: 50,
     },
@@ -85,7 +81,7 @@ export default function RegisterProjectPage() {
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberRank, setNewMemberRank] = useState('BS');
   const [newMemberUnit, setNewMemberUnit] = useState('Khoa Khám bệnh');
-  const [newMemberRole, setNewMemberRole] = useState<'CHỦ_NHIỆM' | 'THƯ_KÝ_KH' | 'THÀNH_VIÊN_CHÍNH' | 'KỸ_THUẬT_VIÊN' | 'CỘNG_TÁC_VIÊN'>('THÀNH_VIÊN_CHÍNH');
+  const [newMemberRole, setNewMemberRole] = useState<ResearchMemberRole>('THÀNH_VIÊN_CHÍNH');
   const [newMemberPercent, setNewMemberPercent] = useState(20);
 
   // IV. Cấu hình Quy trình & Chính sách (Workflow Policy Settings)
@@ -93,24 +89,21 @@ export default function RegisterProjectPage() {
   const [selectedPolicyId, setSelectedPolicyId] = useState(policies[0]?.id || 'policy-a');
   const activePolicy = policies.find((p) => p.id === selectedPolicyId) || policies[0];
 
-  // Bỏ qua xét duyệt chuyên môn (Nếu có phê duyệt ngoài viện)
-  const [hasExternalApproval, setHasExternalApproval] = useState(false);
-  const [scientificReviewSkipReason, setScientificReviewSkipReason] = useState('');
-
   // IV. Hồ sơ đính kèm (File upload checklist)
   const [uploadedFiles, setUploadedFiles] = useState<
     { id: string; type: DocumentType; name: string; size: string }[]
-  >([
-    {
-      id: 'f-1',
-      type: 'PROPOSAL_FORM',
-      name: 'Phieu_de_xuat_de_tai_NCKH_BM1.pdf',
-      size: '1.2 MB',
-    },
-  ]);
+  >([]);
   const [selectedUploadDocType, setSelectedUploadDocType] = useState<DocumentType>('PROPOSAL_FORM');
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [editingProject, setEditingProject] = useState<ResearchProject | null>(null);
+
+  /*
+   * Miễn/bỏ qua xét duyệt chuyên môn không phải lựa chọn tự khai của Chủ nhiệm.
+   * Nếu có phê duyệt ngoài viện, Phòng NCKH phải xác minh và cập nhật ở bước thẩm định.
+   */
+  const hasExternalApproval = editingProject?.scientificReviewStatus === 'SKIPPED';
+  const scientificReviewSkipReason = editingProject?.scientificReviewSkipReason || '';
+
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -135,8 +128,6 @@ export default function RegisterProjectPage() {
     setEstimatedBudget(projectToEdit.estimatedBudget || 250000000);
     setFundingSource(projectToEdit.fundingSource || 'NGÂN_SÁCH_BỆNH_VIỆN');
     setHasFunding((projectToEdit.estimatedBudget ?? 0) > 0);
-    setHasExternalApproval(projectToEdit.scientificReviewStatus === 'SKIPPED');
-    setScientificReviewSkipReason(projectToEdit.scientificReviewSkipReason || '');
     setSelectedPolicyId(projectToEdit.workflowPolicyId || policies[0]?.id || 'policy-a');
     setUploadedFiles(
       (projectToEdit.documents || []).map((doc) => ({
@@ -157,6 +148,30 @@ export default function RegisterProjectPage() {
       warning('Vui lòng nhập họ tên thành viên tham gia nghiên cứu', 'Thiếu thông tin');
       return;
     }
+    if (
+      newMemberPercent < 0 ||
+      newMemberPercent > 100
+    ) {
+      warning(
+        'Tỷ lệ đóng góp phải nằm trong khoảng 0–100%.',
+        'Dữ liệu không hợp lệ'
+      );
+      return;
+    }
+
+    if (
+      newMemberRole === 'CHỦ_NHIỆM' &&
+      members.some(
+        (member) => member.roleInProject === 'CHỦ_NHIỆM'
+      )
+    ) {
+      warning(
+        'Mỗi đề tài chỉ được có 01 Chủ nhiệm.',
+        'Ràng buộc nhân sự'
+      );
+      return;
+    }
+
     setMembers([
       ...members,
       {
@@ -187,7 +202,7 @@ export default function RegisterProjectPage() {
     success('Đã xóa tệp đính kèm');
   };
 
-  const handleFileUploadSimulate = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadedFiles([
@@ -199,62 +214,156 @@ export default function RegisterProjectPage() {
         size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
       },
     ]);
-    success(`Đã tải lên tệp tin: ${file.name}`);
+    success(`Đã chọn tệp: ${file.name}. Tệp sẽ được lưu khi có Document Service thực tế.`);
+  };
+
+  const canEditProject = (project?: ResearchProject | null) => {
+    if (!project) return true;
+
+    return (
+      project.principalInvestigatorId === currentUser.id &&
+      (project.status === 'DRAFT' ||
+        project.proposalStatus === 'REVISION_REQUIRED')
+    );
   };
 
   const handleSaveOrSubmit = (action: 'DRAFT' | 'SUBMIT') => {
+    if (!canEditProject(editingProject)) {
+      error(
+        'Hồ sơ hiện tại không ở trạng thái cho phép Chủ nhiệm chỉnh sửa.',
+        'Không thể cập nhật'
+      );
+      return;
+    }
+
     if (action === 'SUBMIT') {
       if (!title.trim()) {
         error('Vui lòng điền Tên đề tài nghiên cứu ở Bước 1.', 'Lỗi dữ liệu');
         setCurrentStep(1);
         return;
       }
-      if (!uploadedFiles.some((f) => f.type === 'DETAILED_OUTLINE')) {
-        error('Vui lòng tải lên Bản thuyết minh đề cương chi tiết ở Bước 3.', 'Lỗi tài liệu');
+      const requiredProposalDocs =
+        activePolicy.requiredDocumentsByStep[1]?.filter(
+          (requirement) => requirement.required
+        ) || [];
+
+      const missingRequiredDocs = requiredProposalDocs.filter(
+        (requirement) =>
+          !uploadedFiles.some(
+            (file) => file.type === requirement.type
+          )
+      );
+
+      if (missingRequiredDocs.length > 0) {
+        error(
+          `Thiếu tài liệu bắt buộc: ${missingRequiredDocs
+            .map((item) => item.label)
+            .join(', ')}`,
+          'Lỗi tài liệu'
+        );
+        setCurrentStep(2);
+        return;
+      }
+
+      if (!roundId) {
+        error('Vui lòng chọn đợt đăng ký đang mở.', 'Lỗi dữ liệu');
+        setCurrentStep(1);
+        return;
+      }
+
+      if (members.filter((member) => member.roleInProject === 'CHỦ_NHIỆM').length !== 1) {
+        error('Đề tài phải có đúng 01 Chủ nhiệm.', 'Lỗi nhân sự');
+        setCurrentStep(2);
+        return;
+      }
+
+      const contributionTotal = members.reduce(
+        (sum, member) => sum + Number(member.contributionPercentage || 0),
+        0
+      );
+
+      if (contributionTotal !== 100) {
+        error(
+          `Tổng tỷ lệ đóng góp của nhóm nghiên cứu phải bằng 100% (hiện tại ${contributionTotal}%).`,
+          'Lỗi nhân sự'
+        );
+        setCurrentStep(2);
+        return;
+      }
+
+      if (new Date(startDate).getTime() > new Date(endDate).getTime()) {
+        error('Ngày bắt đầu phải trước ngày kết thúc.', 'Lỗi thời gian');
         setCurrentStep(3);
         return;
       }
     }
 
-    const selectedRound = repo.getRoundById(roundId) || rounds.find((r) => r.id === roundId) || rounds[0] || {
-      id: 'round-2026-01',
-      name: 'Đợt đăng ký Đề tài NCKH Cấp cơ sở Đợt 1 Năm 2026',
-    };
+    const selectedRound =
+      repo.getRoundById(roundId) ||
+      rounds.find((round) => round.id === roundId);
+
+    if (!selectedRound) {
+      error('Đợt đăng ký không hợp lệ hoặc không còn mở.', 'Lỗi dữ liệu');
+      return;
+    }
     const selectedDept = departments.find((d) => d.id === departmentId) || departments[0];
 
     const proposalCode = editingProject?.proposalCode || `DX-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
     const projectId = editingProjectId || `proj-${Date.now()}`;
-    const proposalStatus = action === 'SUBMIT' ? 'SUBMITTED' : editingProject?.proposalStatus || 'DRAFT';
-    const submittedAt = action === 'SUBMIT' ? new Date().toLocaleDateString('vi-VN') : editingProject?.submittedAt;
-    const projectCategory: ResearchProject['projectCategory'] = selectedPolicyId === 'policy-b' ? 'CAO_HOC' : selectedPolicyId === 'policy-c' ? 'NHA_NUOC' : 'CAP_CO_SO';
-    const acceptanceAuthority: ResearchProject['acceptanceAuthority'] = selectedPolicyId === 'policy-b' ? 'CO_SO_DAO_TAO' : 'BENH_VIEN';
-    const scientificReviewStatus: ResearchProject['scientificReviewStatus'] = hasExternalApproval ? 'SKIPPED' : 'REQUIRED';
-    const historyEntry = {
-      id: `h-${Date.now()}`,
-      projectId,
-      fromStatus: editingProject?.proposalStatus || 'NONE',
-      toStatus: proposalStatus,
-      changedBy: currentUser.id,
-      changedByName: currentUser.fullName,
-      userRole: currentUser.role,
-      changedAt: new Date().toLocaleDateString('vi-VN'),
-      action: editingProjectId
-        ? action === 'SUBMIT'
-          ? 'Cập nhật và nộp lại hồ sơ đề xuất'
-          : 'Cập nhật hồ sơ đề xuất'
-        : action === 'SUBMIT'
-        ? 'Nộp hồ sơ đề xuất mới'
-        : 'Lưu nháp hồ sơ',
-    };
+    const proposalStatus =
+      action === 'SUBMIT'
+        ? editingProject?.proposalStatus === 'REVISION_REQUIRED'
+          ? 'RESUBMITTED'
+          : 'SUBMITTED'
+        : editingProject?.proposalStatus || 'DRAFT';
 
-    const updatedProject = {
+    const submittedAt =
+      action === 'SUBMIT'
+        ? new Date().toISOString()
+        : editingProject?.submittedAt;
+    const projectCategory =
+      editingProject?.projectCategory || 'CAP_CO_SO';
+    const acceptanceAuthority =
+      editingProject?.acceptanceAuthority || 'BENH_VIEN';
+    const scientificReviewStatus: ResearchProject['scientificReviewStatus'] =
+      editingProject?.scientificReviewStatus || 'REQUIRED';
+    const targetProjectStatus =
+      action === 'SUBMIT'
+        ? 'SUBMITTED'
+        : editingProject?.status || 'DRAFT';
+
+    const shouldRecordProjectStatusChange =
+      !editingProject ||
+      editingProject.status !== targetProjectStatus;
+
+    const historyEntry: ProjectStatusHistory | null =
+      shouldRecordProjectStatusChange
+        ? {
+            id: `h-${Date.now()}`,
+            projectId,
+            fromStatus: editingProject?.status || 'NONE',
+            toStatus: targetProjectStatus,
+            changedBy: currentUser.id,
+            changedByName: currentUser.fullName,
+            userRole: currentUser.role,
+            changedAt: new Date().toISOString(),
+            action:
+              action === 'SUBMIT'
+                ? editingProjectId
+                  ? 'Nộp lại hồ sơ đăng ký'
+                  : 'Nộp hồ sơ đăng ký'
+                : 'Lưu hồ sơ đăng ký ở trạng thái nháp',
+          }
+        : null;
+
+    const updatedProject: ResearchProject = {
       ...(editingProject || {}),
       id: projectId,
       workflowPolicyId: selectedPolicyId,
       projectCategory,
       acceptanceAuthority,
       scientificReviewStatus,
-      scientificReviewSkipReason: hasExternalApproval ? scientificReviewSkipReason : undefined,
+      scientificReviewSkipReason,
       proposalCode,
       title,
       summary: summary || editingProject?.summary || 'Tóm tắt nội dung đề cương nghiên cứu khoa học cơ sở...',
@@ -263,14 +372,14 @@ export default function RegisterProjectPage() {
       projectType,
       principalInvestigatorId: currentUser.id,
       principalInvestigatorName: piName || currentUser.fullName,
-      departmentId: selectedDept?.id || editingProject?.departmentId || 'dept-01',
-      departmentName: selectedDept?.name || editingProject?.departmentName || 'Khoa Tim mạch Can thiệp',
+      departmentId: selectedDept?.id || editingProject?.departmentId || '',
+      departmentName: selectedDept?.name || editingProject?.departmentName || '',
       startDate,
       endDate,
       estimatedBudget: hasFunding ? estimatedBudget : 0,
-      approvedBudget: hasFunding ? estimatedBudget : 0,
+      approvedBudget: editingProject?.approvedBudget ?? 0,
       fundingSource: hasFunding ? fundingSource : 'TỰ_TÚC',
-      progressPercentage: editingProject?.progressPercentage ?? 0,
+      reportedProgressPercentage: editingProject?.reportedProgressPercentage ?? 0,
       urgencyExplanation: editingProject?.urgencyExplanation || '',
       expectedObjectives: editingProject?.expectedObjectives || '',
       researchDesign: editingProject?.researchDesign || '',
@@ -285,43 +394,57 @@ export default function RegisterProjectPage() {
       expectedProducts: editingProject?.expectedProducts || '',
       hospitalApplication: editingProject?.hospitalApplication || '',
       otherInfo: editingProject?.otherInfo || '',
-      status: editingProject?.status || 'DRAFT',
+      status: targetProjectStatus,
       proposalStatus,
       ethicsRequired: editingProject?.ethicsRequired ?? false,
       ethicsStatus: editingProject?.ethicsStatus || 'NOT_REQUIRED',
       registrationRoundId: selectedRound.id,
       registrationRoundName: selectedRound.name,
-      createdAt: editingProject?.createdAt || new Date().toLocaleDateString('vi-VN'),
+      createdAt: editingProject?.createdAt || new Date().toISOString(),
       submittedAt,
       members: members.map((m) => ({ ...m, projectId })),
-      documents: uploadedFiles.map((f, i) => ({
-        id: f.id || `doc-${i + 1}`,
-        projectId,
-        documentType: f.type,
-        title: f.name,
-        currentVersion: 1,
-        currentVersionId: `ver-1`,
-        versions: [
-          {
-            id: `ver-1`,
-            documentId: f.id || `doc-${i + 1}`,
-            version: 1,
-            fileName: f.name,
-            fileSize: f.size,
-            uploadedBy: currentUser.id,
-            uploadedByName: currentUser.fullName,
-            uploadedAt: new Date().toLocaleString('vi-VN'),
-            downloadUrl: '#',
-            isCurrent: true,
-          },
-        ],
-      })),
+      documents: uploadedFiles.map((file, index) => {
+        const existingDocument = editingProject?.documents.find(
+          (document) => document.id === file.id
+        );
+
+        if (existingDocument) {
+          return existingDocument;
+        }
+
+        const documentId = file.id || `doc-${index + 1}`;
+
+        return {
+          id: documentId,
+          projectId,
+          documentType: file.type,
+          title: file.name,
+          currentVersion: 1,
+          currentVersionId: `${documentId}-v1`,
+          versions: [
+            {
+              id: `${documentId}-v1`,
+              documentId,
+              version: 1,
+              fileName: file.name,
+              fileSize: file.size,
+              uploadedBy: currentUser.id,
+              uploadedByName: currentUser.fullName,
+              uploadedAt: new Date().toISOString(),
+              downloadUrl: '',
+              isCurrent: true,
+            },
+          ],
+        };
+      }),
       milestones: editingProject?.milestones || [],
       progressReports: editingProject?.progressReports || [],
       changeRequests: editingProject?.changeRequests || [],
       financeStatus: editingProject?.financeStatus ?? 'PENDING',
       decisions: editingProject?.decisions || [],
-      statusHistory: [...(editingProject?.statusHistory || []), historyEntry],
+      statusHistory: historyEntry
+        ? [...(editingProject?.statusHistory || []), historyEntry]
+        : editingProject?.statusHistory || [],
     };
 
     if (editingProjectId) {
@@ -359,7 +482,7 @@ export default function RegisterProjectPage() {
   const stepsList = [
     { number: 1, label: 'Thông tin chung', icon: FileText },
     { number: 2, label: 'Nhân sự & Phiếu đề xuất', icon: Users },
-    { number: 3, label: 'Đề cương & Kinh phí', icon: DollarSign },
+    { number: 3, label: 'Thời gian & Kinh phí', icon: DollarSign },
   ];
 
   return (
@@ -379,7 +502,7 @@ export default function RegisterProjectPage() {
             {editingProjectId ? 'Chỉnh sửa đề tài nghiên cứu' : 'Đăng ký đề tài nghiên cứu mới'}
           </h1>
           <p className="text-[12px] text-slate-500 mt-0.5">
-            {editingProjectId ? 'Cập nhật hồ sơ đề xuất chờ xét duyệt' : 'Mẫu RICH.QT01.V1.0 • Phiếu đề xuất và đề cương trực tuyến'}
+            {editingProjectId ? 'Cập nhật hồ sơ đề xuất chờ xét duyệt' : 'Phiếu đăng ký/đề xuất đề tài trực tuyến'}
           </p>
         </div>
       </div>
@@ -512,43 +635,10 @@ export default function RegisterProjectPage() {
                   </span>
                 </div>
               </div>
-
-              {/* Bỏ qua hội đồng chuyên môn (Skip outline review) */}
-              <div className="border-t border-sky-100/60 pt-3">
-                <label className="flex items-start gap-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={hasExternalApproval}
-                    onChange={(e) => setHasExternalApproval(e.target.checked)}
-                    className="w-4 h-4 text-[#0A6EBD] focus:ring-[#0A6EBD]/30 rounded border-slate-300 mt-0.5"
-                  />
-                  <div>
-                    <span className="font-bold text-slate-800 text-[11px]">Đề tài đã được Hội đồng chuyên môn ngoài viện xét duyệt</span>
-                    <p className="text-[10px] text-slate-500 mt-0.5">Tích chọn nếu đề tài đã bảo vệ thành công tại cơ sở đào tạo hoặc đơn vị chủ quản trước đó.</p>
-                  </div>
-                </label>
-
-                {hasExternalApproval && (
-                  <div className="mt-3 space-y-3 animate-in slide-in-from-top-1">
-                    <div>
-                      <label className="font-bold text-slate-700 block mb-1">
-                        Lý do miễn bảo vệ đề cương & Quyết định liên quan <span className="text-rose-500">*</span>
-                      </label>
-                      <textarea
-                        rows={2}
-                        required
-                        placeholder="Ghi rõ thông tin Hội đồng chuyên môn đã duyệt đề cương (tên Hội đồng, ngày duyệt, số quyết định phê duyệt...)"
-                        value={scientificReviewSkipReason}
-                        onChange={(e) => setScientificReviewSkipReason(e.target.value)}
-                        className="w-full p-2.5 rounded-lg border border-slate-300 text-slate-850 font-medium focus:ring-2 focus:ring-[#0A6EBD]/20 focus:border-[#0A6EBD]"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
+          
 
-            {/* Tên đề tài */}
+          {/* Tên đề tài */}
             <div>
               <label className="font-bold text-slate-700 block mb-1.5">
                 Tên đề tài nghiên cứu <span className="text-rose-500">*</span>
@@ -669,7 +759,7 @@ export default function RegisterProjectPage() {
                     type="text"
                     required
                     value={piName}
-                    onChange={(e) => setPiName(e.target.value)}
+                    readOnly
                     className="w-full p-3 rounded-xl border border-slate-300 font-semibold text-slate-900 bg-slate-50 focus:ring-2 focus:ring-[#0A6EBD]/20 focus:border-[#0A6EBD]"
                   />
                 </div>
@@ -794,7 +884,7 @@ export default function RegisterProjectPage() {
                   className="hidden"
                   onChange={(e) => {
                      setSelectedUploadDocType('PROPOSAL_FORM');
-                     handleFileUploadSimulate(e);
+                     handleFileSelected(e);
                   }}
                 />
                 <div className="w-12 h-12 rounded-2xl bg-white shadow-sm border border-slate-200 flex items-center justify-center text-slate-600 group-hover:text-[#0A6EBD] group-hover:scale-110 transition">
@@ -845,55 +935,15 @@ export default function RegisterProjectPage() {
       {/* STEP 3: ĐỀ CƯƠNG & KINH PHÍ */}
       {currentStep === 3 && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Tải lên đề cương chi tiết */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="bg-slate-50/80 px-6 py-3 border-b border-slate-200">
-              <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                III. Đề cương chi tiết (File đính kèm)
-              </h2>
-            </div>
-            <div className="p-6 space-y-5 text-xs">
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-2">
-                <span className="font-bold text-[#0B2A63] block">
-                  Tài liệu đề cương thuyết minh bắt buộc:
-                </span>
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs p-2 rounded-lg bg-white border border-slate-150 font-medium">
-                    <div className="flex items-center gap-2">
-                      {uploadedFiles.some((f) => f.type === 'DETAILED_OUTLINE') ? (
-                        <span className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold">✓</span>
-                      ) : (
-                        <span className="w-4 h-4 rounded-full bg-rose-500 text-white flex items-center justify-center text-[10px] font-bold">✗</span>
-                      )}
-                      <span className="text-slate-700 font-bold">Thuyết minh đề cương chi tiết *</span>
-                    </div>
-                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${
-                      uploadedFiles.some((f) => f.type === 'DETAILED_OUTLINE') ? 'bg-emerald-50 text-emerald-700 border border-emerald-250/60' : 'bg-rose-50 text-rose-700 border border-rose-250/60'
-                    }`}>
-                      {uploadedFiles.some((f) => f.type === 'DETAILED_OUTLINE') ? 'Đã đính kèm' : 'Chưa đính kèm'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Dropzone Upload */}
-              <label className="border-2 border-dashed border-slate-300 hover:border-[#0A6EBD] bg-slate-50/50 hover:bg-sky-50/10 rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition group">
-                <input
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => {
-                     setSelectedUploadDocType('DETAILED_OUTLINE');
-                     handleFileUploadSimulate(e);
-                  }}
-                />
-                <div className="w-12 h-12 rounded-2xl bg-white shadow-sm border border-slate-200 flex items-center justify-center text-slate-600 group-hover:text-[#0A6EBD] group-hover:scale-110 transition">
-                  <Upload className="w-6 h-6" />
-                </div>
-                <p className="font-bold text-slate-800 text-sm mt-3">
-                  Kéo thả bản Đề cương chi tiết vào đây hoặc <span className="text-[#0A6EBD]">click để duyệt file</span>
-                </p>
-              </label>
-            </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-xs text-slate-600 shadow-sm">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+              III. Thời gian thực hiện
+            </h2>
+            <p className="mt-2 leading-relaxed">
+              Ở giai đoạn đăng ký chỉ tiếp nhận Phiếu đề xuất và thông tin sơ bộ.
+              Đề cương chi tiết được nộp sau khi hồ sơ đăng ký được Phòng NCKH xác nhận
+              <strong> ADMIN_VALIDATED</strong>.
+            </p>
           </div>
 
           {/* Quản lý Kinh phí */}
@@ -937,7 +987,7 @@ export default function RegisterProjectPage() {
                       <label className="font-bold text-slate-700 block mb-1.5">Nguồn kinh phí chủ yếu *</label>
                       <select
                         value={fundingSource}
-                        onChange={(e) => setFundingSource(e.target.value as any)}
+                        onChange={(e) => setFundingSource(e.target.value as FundingSource)}
                         className="w-full p-3 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-[#0A6EBD]/20 focus:border-[#0A6EBD] font-semibold text-slate-800"
                       >
                         <option value="NGÂN_SÁCH_BỆNH_VIỆN">Ngân sách Bệnh viện (Quỹ phát triển hoạt động sự nghiệp)</option>
@@ -968,7 +1018,7 @@ export default function RegisterProjectPage() {
                         className="hidden"
                         onChange={(e) => {
                            setSelectedUploadDocType('BUDGET_ESTIMATE');
-                           handleFileUploadSimulate(e);
+                           handleFileSelected(e);
                         }}
                       />
                       <div className="w-10 h-10 rounded-2xl bg-white shadow-sm border border-slate-200 flex items-center justify-center text-slate-600 group-hover:text-[#0A6EBD] group-hover:scale-110 transition">
@@ -1083,7 +1133,7 @@ export default function RegisterProjectPage() {
                   <label className="font-bold text-slate-700 block mb-1">Vai trò tham gia</label>
                   <select
                     value={newMemberRole}
-                    onChange={(e) => setNewMemberRole(e.target.value as any)}
+                    onChange={(e) => setNewMemberRole(e.target.value as ResearchMemberRole)}
                     className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-semibold text-slate-850"
                   >
                     <option value="THƯ_KÝ_KH">Thư ký đề tài</option>

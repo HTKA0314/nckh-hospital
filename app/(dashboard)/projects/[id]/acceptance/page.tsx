@@ -1,409 +1,997 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { repo } from '@/lib/repository';
-import { useAuth } from '@/lib/auth-context';
-import { canReviewAcceptanceDossier, canSubmitAcceptanceDossier } from '@/lib/utils/permissions';
-import { useToast } from '@/components/ui/Toast';
-import { PageHeader } from '@/components/common/PageHeader';
-import { AcceptanceDossier, AcceptanceDossierStatus } from '@/lib/types';
-import { formatDate } from '@/lib/utils';
-import { 
-  ArrowLeft, 
-  Award, 
-  AlertCircle, 
-  CheckCircle2, 
-  Clock, 
-  Plus, 
-  FileText,
+import {
+  AlertCircle,
+  ArrowLeft,
+  Check,
+  CheckCircle2,
   FileCheck2,
   ListChecks,
-  Check,
-  X
+  Paperclip,
+  Plus,
+  Upload,
+  X,
 } from 'lucide-react';
 
-export default function ProjectAcceptancePage({ params }: { params: { id: string } }) {
+import { repo } from '@/lib/repository';
+import { useAuth } from '@/lib/auth-context';
+import {
+  canReviewAcceptanceDossier,
+  canSubmitAcceptanceDossier,
+} from '@/lib/utils/permissions';
+import { useToast } from '@/components/ui/Toast';
+import { PageHeader } from '@/components/common/PageHeader';
+import {
+  AcceptanceDossier,
+  AcceptanceDossierStatus,
+} from '@/lib/types';
+
+type ChecklistKey = keyof NonNullable<
+  AcceptanceDossier['checklistResults']
+>;
+
+const CHECKLIST_ITEMS: Array<{
+  key: ChecklistKey;
+  label: string;
+}> = [
+  {
+    key: 'finalReportSubmitted',
+    label: 'Nộp báo cáo tổng kết đề tài',
+  },
+  {
+    key: 'productsCompleted',
+    label: 'Bàn giao đầy đủ sản phẩm cam kết',
+  },
+  {
+    key: 'evidenceValid',
+    label: 'Đầy đủ minh chứng khoa học',
+  },
+  {
+    key: 'progressReportsCompleted',
+    label: 'Hoàn thành các báo cáo tiến độ bắt buộc',
+  },
+  {
+    key: 'noPendingChangeRequests',
+    label: 'Không còn yêu cầu điều chỉnh đang xử lý',
+  },
+  {
+    key: 'ethicsValid',
+    label: 'Điều kiện đạo đức còn hiệu lực hoặc không áp dụng',
+  },
+  {
+    key: 'financeConditionMet',
+    label: 'Đáp ứng điều kiện tài chính theo policy',
+  },
+  {
+    key: 'publicationsIfRequired',
+    label: 'Đáp ứng yêu cầu công bố nếu policy bắt buộc',
+  },
+];
+
+const EMPTY_CHECKLIST: NonNullable<
+  AcceptanceDossier['checklistResults']
+> = {
+  finalReportSubmitted: false,
+  productsCompleted: false,
+  evidenceValid: false,
+  progressReportsCompleted: false,
+  noPendingChangeRequests: false,
+  ethicsValid: false,
+  financeConditionMet: false,
+  publicationsIfRequired: false,
+};
+
+export default function ProjectAcceptancePage({
+  params,
+}: {
+  params: { id: string };
+}) {
   const project = repo.getProjectById(params.id);
   const { currentUser } = useAuth();
   const { success, warning, error, confirm } = useToast();
 
-  const [dossier, setDossier] = useState<AcceptanceDossier | undefined>(() => project?.acceptanceDossier);
+  const [dossier, setDossier] = useState<
+    AcceptanceDossier | undefined
+  >(() => project?.acceptanceDossier);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [formData, setFormData] = useState({
-    productsSummary: 'Báo cáo tổng kết đề tài và bài báo tạp chí chuyên ngành đã đăng.',
-    productsCommitted: '01 báo cáo khoa học tổng kết, 01 bài báo tạp chí chuyên ngành.',
-    productsActual: '01 báo cáo tổng kết hoàn chỉnh, 01 bài báo đã đăng Tạp chí Y học.',
-    completionPercentage: 100,
+    productsSummary: '',
+    productsCommitted: '',
+    productsActual: '',
+    claimedOverallCompletionPercentage: 100,
   });
+  const [evidenceFile, setEvidenceFile] =
+    useState<File | null>(null);
+
+  const [reviewChecklist, setReviewChecklist] = useState<
+    NonNullable<AcceptanceDossier['checklistResults']>
+  >(() => dossier?.checklistResults || EMPTY_CHECKLIST);
 
   if (!project) {
     return (
-      <div className="text-center py-16 bg-white rounded border border-slate-200 max-w-xl mx-auto">
-        <AlertCircle className="w-10 h-10 text-slate-400 mx-auto mb-2" />
-        <h2 className="text-base font-bold text-slate-800">Không tìm thấy hồ sơ đề tài</h2>
-        <Link href="/projects" className="mt-4 inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#0A6EBD] text-white rounded text-xs font-bold shadow-sm">
-          <ArrowLeft className="w-4 h-4" /> Quay lại danh mục đề tài
+      <div className="mx-auto my-8 max-w-xl rounded-xl border border-slate-200 bg-white py-16 text-center">
+        <AlertCircle className="mx-auto mb-2 h-10 w-10 text-slate-400" />
+        <h2 className="text-base font-bold text-slate-800">
+          Không tìm thấy hồ sơ đề tài
+        </h2>
+        <Link
+          href="/projects"
+          className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-[#0A6EBD] px-3.5 py-1.5 text-xs font-bold text-white"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Quay lại danh mục đề tài
         </Link>
       </div>
     );
   }
 
-  const handleCreateDossier = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newDossier: AcceptanceDossier = {
-      id: `acc-${Date.now()}`,
-      projectId: project.id,
-      submissionDate: new Date().toLocaleDateString('vi-VN'),
-      productsSummary: formData.productsSummary,
-      productsCommitted: formData.productsCommitted,
-      productsActual: formData.productsActual,
-      completionPercentage: Number(formData.completionPercentage),
-      evidenceUrls: [{ name: 'Minh_chung_nghiem_thu.pdf', url: '#' }],
-      status: 'SUBMITTED',
-      checklistResults: {
-        finalReportSubmitted: true,
-        productsCompleted: true,
-        evidenceValid: true,
-        progressReportsCompleted: true,
-        noPendingChangeRequests: true,
-        ethicsValid: true,
-        financeConditionMet: true,
-        publicationsIfRequired: true,
-      }
-    };
+  const canSubmit =
+    canSubmitAcceptanceDossier(currentUser) &&
+    project.status === 'IN_PROGRESS';
 
-    repo.updateProject(project.id, { 
-      acceptanceDossier: newDossier,
-      status: 'WAITING_ACCEPTANCE'
+  const canReview = canReviewAcceptanceDossier(currentUser);
+
+  const isResubmission =
+    dossier?.status === 'REVISION_REQUIRED';
+
+  const checklistAllPassed = useMemo(
+    () => Object.values(reviewChecklist).every(Boolean),
+    [reviewChecklist]
+  );
+
+  const refreshDossierFromRepository = () => {
+    const refreshed = repo.getProjectById(project.id);
+    setDossier(refreshed?.acceptanceDossier);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      productsSummary: '',
+      productsCommitted: '',
+      productsActual: '',
+      claimedOverallCompletionPercentage: 100,
     });
-    setDossier(newDossier);
-    setShowAddModal(false);
-    success('Đã nộp Hồ sơ Nghiệm thu đề tài thành công! Chờ Phòng NCKH thẩm định.');
+    setEvidenceFile(null);
+  };
 
-    // Add Audit Log
+  const openSubmissionModal = () => {
+    if (dossier && dossier.status === 'REVISION_REQUIRED') {
+      setFormData({
+        productsSummary: dossier.productsSummary,
+        productsCommitted: dossier.productsCommitted,
+        productsActual: dossier.productsActual,
+        claimedOverallCompletionPercentage:
+          dossier.claimedOverallCompletionPercentage ?? 100,
+      });
+    }
+    setShowAddModal(true);
+  };
+
+  const handleSubmitDossier = (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!canSubmitAcceptanceDossier(currentUser)) {
+      warning('Bạn không có quyền nộp hồ sơ nghiệm thu.');
+      return;
+    }
+
+    if (project.status !== 'IN_PROGRESS') {
+      warning(
+        'Chỉ đề tài đang thực hiện mới được nộp hồ sơ nghiệm thu.'
+      );
+      return;
+    }
+
+    if (
+      dossier &&
+      dossier.status !== 'REVISION_REQUIRED'
+    ) {
+      warning(
+        'Hồ sơ nghiệm thu đã tồn tại và không ở trạng thái cho phép nộp lại.'
+      );
+      return;
+    }
+
+    if (
+      formData.claimedOverallCompletionPercentage < 0 ||
+      formData.claimedOverallCompletionPercentage > 100
+    ) {
+      warning('Tỷ lệ hoàn thành phải nằm trong khoảng 0–100%.');
+      return;
+    }
+
+    /*
+     * Prototype hiện chưa có binary upload service.
+     * Chỉ ghi metadata tên file; không tạo URL giả "#".
+     */
+    const evidenceUrls = evidenceFile
+      ? [{ name: evidenceFile.name, url: '' }]
+      : [];
+
+    const nextStatus: AcceptanceDossierStatus =
+      dossier?.status === 'REVISION_REQUIRED'
+        ? 'RESUBMITTED'
+        : 'SUBMITTED';
+
+    const nextDossier: AcceptanceDossier = dossier
+      ? {
+          ...dossier,
+          submissionDate: new Date().toISOString(),
+          productsSummary: formData.productsSummary.trim(),
+          productsCommitted: formData.productsCommitted.trim(),
+          productsActual: formData.productsActual.trim(),
+          claimedOverallCompletionPercentage:
+            Number(
+              formData.claimedOverallCompletionPercentage
+            ),
+          evidenceUrls:
+            evidenceUrls.length > 0
+              ? evidenceUrls
+              : dossier.evidenceUrls,
+          status: nextStatus,
+          checklistResults: undefined,
+        }
+      : {
+          id: `acc-${Date.now()}`,
+          projectId: project.id,
+          submissionDate: new Date().toISOString(),
+          productsSummary: formData.productsSummary.trim(),
+          productsCommitted: formData.productsCommitted.trim(),
+          productsActual: formData.productsActual.trim(),
+          claimedOverallCompletionPercentage:
+            Number(
+              formData.claimedOverallCompletionPercentage
+            ),
+          evidenceUrls,
+          status: nextStatus,
+        };
+
+    const updatedProject = repo.updateProject(project.id, {
+      acceptanceDossier: nextDossier,
+      status: 'WAITING_ACCEPTANCE',
+    });
+
+    if (!updatedProject) {
+      error('Không thể lưu hồ sơ nghiệm thu.');
+      return;
+    }
+
     repo.addAuditLog({
       userId: currentUser.id,
       userFullName: currentUser.fullName,
       userRole: currentUser.role,
-      actionCode: 'SUBMIT_ACCEPTANCE_DOSSIER',
+      actionCode:
+        nextStatus === 'RESUBMITTED'
+          ? 'RESUBMIT_ACCEPTANCE_DOSSIER'
+          : 'SUBMIT_ACCEPTANCE_DOSSIER',
       entityType: 'ACCEPTANCE',
-      entityId: newDossier.id,
-      notes: `Chủ nhiệm nộp hồ sơ nghiệm thu đề tài. Số lượng sản phẩm bàn giao thực tế: ${formData.productsActual}`,
+      entityId: nextDossier.id,
+      fromStatus: dossier?.status,
+      toStatus: nextStatus,
+      notes:
+        nextStatus === 'RESUBMITTED'
+          ? 'Chủ nhiệm nộp lại hồ sơ nghiệm thu sau yêu cầu bổ sung.'
+          : 'Chủ nhiệm nộp hồ sơ nghiệm thu.',
     });
+
+    setDossier(nextDossier);
+    setReviewChecklist(EMPTY_CHECKLIST);
+    setShowAddModal(false);
+    resetForm();
+
+    success(
+      nextStatus === 'RESUBMITTED'
+        ? 'Đã nộp lại hồ sơ nghiệm thu.'
+        : 'Đã nộp hồ sơ nghiệm thu. Chờ Phòng NCKH tiếp nhận.'
+    );
   };
 
-  const handleVerifyChecklist = (status: 'ELIGIBLE_FOR_ACCEPTANCE' | 'REVISION_REQUIRED') => {
-    if (!dossier) return;
+  const handleReceiveForReview = () => {
+    if (!dossier || !canReview) return;
+
+    if (
+      dossier.status !== 'SUBMITTED' &&
+      dossier.status !== 'RESUBMITTED'
+    ) {
+      warning(
+        'Chỉ có thể tiếp nhận hồ sơ vừa nộp hoặc nộp lại.'
+      );
+      return;
+    }
+
+    const previousStatus = dossier.status;
+    const updatedDossier: AcceptanceDossier = {
+      ...dossier,
+      status: 'UNDER_ADMIN_REVIEW',
+    };
+
+    const updatedProject = repo.updateProject(project.id, {
+      acceptanceDossier: updatedDossier,
+    });
+
+    if (!updatedProject) {
+      error('Không thể tiếp nhận hồ sơ nghiệm thu.');
+      return;
+    }
+
+    repo.addAuditLog({
+      userId: currentUser.id,
+      userFullName: currentUser.fullName,
+      userRole: currentUser.role,
+      actionCode: 'RECEIVE_ACCEPTANCE_DOSSIER',
+      entityType: 'ACCEPTANCE',
+      entityId: dossier.id,
+      fromStatus: previousStatus,
+      toStatus: 'UNDER_ADMIN_REVIEW',
+      notes:
+        'Phòng NCKH tiếp nhận hồ sơ và bắt đầu kiểm tra điều kiện nghiệm thu.',
+    });
+
+    setDossier(updatedDossier);
+    success('Đã tiếp nhận hồ sơ nghiệm thu.');
+  };
+
+  const handleVerifyChecklist = (
+    status:
+      | 'ELIGIBLE_FOR_ACCEPTANCE'
+      | 'REVISION_REQUIRED'
+  ) => {
+    if (!dossier || !canReview) return;
+
+    if (dossier.status !== 'UNDER_ADMIN_REVIEW') {
+      warning(
+        'Hồ sơ phải ở trạng thái đang kiểm tra hành chính.'
+      );
+      return;
+    }
+
+    if (
+      status === 'ELIGIBLE_FOR_ACCEPTANCE' &&
+      !checklistAllPassed
+    ) {
+      warning(
+        'Chưa thể xác nhận đủ điều kiện vì checklist còn mục chưa đạt.'
+      );
+      return;
+    }
 
     confirm({
-      title: status === 'ELIGIBLE_FOR_ACCEPTANCE' ? 'Xác nhận Đủ điều kiện nghiệm thu' : 'Yêu cầu sửa đổi hồ sơ',
-      message: `Bạn chắc chắn muốn đánh giá hồ sơ nghiệm thu này là "${status === 'ELIGIBLE_FOR_ACCEPTANCE' ? 'Đạt' : 'Cần sửa đổi'}"?`,
+      title:
+        status === 'ELIGIBLE_FOR_ACCEPTANCE'
+          ? 'Xác nhận đủ điều kiện nghiệm thu'
+          : 'Yêu cầu bổ sung hồ sơ',
+      message:
+        status === 'ELIGIBLE_FOR_ACCEPTANCE'
+          ? 'Xác nhận hồ sơ đã đáp ứng các điều kiện hành chính để chuyển bước tổ chức Hội đồng nghiệm thu?'
+          : 'Xác nhận trả hồ sơ cho Chủ nhiệm để bổ sung?',
       confirmLabel: 'Xác nhận',
+      type:
+        status === 'ELIGIBLE_FOR_ACCEPTANCE'
+          ? 'info'
+          : 'warning',
       onConfirm: () => {
         const updatedDossier: AcceptanceDossier = {
           ...dossier,
-          status: status as any,
+          status,
+          checklistResults: {
+            ...reviewChecklist,
+          },
         };
 
-        repo.updateProject(project.id, { acceptanceDossier: updatedDossier });
-        setDossier(updatedDossier);
-        success('Đã cập nhật kết quả thẩm định hồ sơ nghiệm thu!');
-
-        // Add Audit Log
-        repo.addAuditLog({
-          userId: currentUser.id,
-          userFullName: currentUser.fullName,
-          userRole: currentUser.role,
-          actionCode: `VERIFY_ACCEPTANCE_${status}`,
-          entityType: 'ACCEPTANCE',
-          entityId: dossier.id,
-          notes: `Đánh giá hồ sơ nghiệm thu: ${status}`,
-        });
-      }
-    });
-  };
-
-  const handleApproveAcceptance = () => {
-    if (!dossier) return;
-
-    confirm({
-      title: 'Xác nhận thông qua Nghiệm thu đề tài',
-      message: `Bạn chắc chắn muốn duyệt thông qua nghiệm thu đề tài này? Điều này sẽ chuyển trạng thái đề tài thành ACCEPTED.`,
-      confirmLabel: 'Xác nhận',
-      onConfirm: () => {
-        const updatedDossier: AcceptanceDossier = {
-          ...dossier,
-          status: 'FORWARDED_TO_COUNCIL', // Chuyển trạng thái hội đồng nghiệm thu thành công
-        };
-
-        repo.updateProject(project.id, { 
+        const updatedProject = repo.updateProject(project.id, {
           acceptanceDossier: updatedDossier,
-          status: 'ACCEPTED',
-          statusHistory: [
-            ...project.statusHistory,
-            {
-              id: `h-${Date.now()}`,
-              projectId: project.id,
-              fromStatus: project.status,
-              toStatus: 'ACCEPTED',
-              changedBy: currentUser.id,
-              changedByName: currentUser.fullName,
-              userRole: currentUser.role,
-              changedAt: new Date().toLocaleString('vi-VN'),
-              action: 'Thông qua nghiệm thu chuyên môn của Hội đồng',
-            }
-          ]
         });
-        setDossier(updatedDossier);
-        success('Đã duyệt nghiệm thu đề tài thành công!');
 
-        // Add Audit Log
+        if (!updatedProject) {
+          error('Không thể cập nhật kết quả kiểm tra hồ sơ.');
+          return;
+        }
+
         repo.addAuditLog({
           userId: currentUser.id,
           userFullName: currentUser.fullName,
           userRole: currentUser.role,
-          actionCode: 'ACCEPTANCE_APPROVED',
+          actionCode:
+            status === 'ELIGIBLE_FOR_ACCEPTANCE'
+              ? 'ACCEPTANCE_DOSSIER_VALIDATED'
+              : 'ACCEPTANCE_DOSSIER_REVISION_REQUIRED',
           entityType: 'ACCEPTANCE',
           entityId: dossier.id,
-          notes: 'Duyệt thông qua nghiệm thu chuyên môn cấp cơ sở',
+          fromStatus: dossier.status,
+          toStatus: status,
+          notes:
+            status === 'ELIGIBLE_FOR_ACCEPTANCE'
+              ? 'Hồ sơ đủ điều kiện chuyển bước tổ chức Hội đồng nghiệm thu.'
+              : 'Hồ sơ cần Chủ nhiệm bổ sung trước khi tiếp tục.',
         });
-      }
+
+        setDossier(updatedDossier);
+
+        if (status === 'ELIGIBLE_FOR_ACCEPTANCE') {
+          success(
+            'Đã xác nhận hồ sơ đủ điều kiện nghiệm thu.'
+          );
+        } else {
+          warning(
+            'Đã chuyển hồ sơ về trạng thái cần bổ sung.'
+          );
+        }
+      },
     });
   };
 
-  const getDossierStatusBadge = (status?: AcceptanceDossierStatus) => {
+  const handleForwardToCouncil = () => {
+    if (!dossier || !canReview) return;
+
+    if (dossier.status !== 'ELIGIBLE_FOR_ACCEPTANCE') {
+      warning(
+        'Chỉ hồ sơ đã đủ điều kiện mới được chuyển Hội đồng nghiệm thu.'
+      );
+      return;
+    }
+
+    confirm({
+      title: 'Chuyển Hội đồng nghiệm thu',
+      message:
+        'Xác nhận chuyển hồ sơ sang workspace Quản lý Hội đồng để tổ chức nghiệm thu?',
+      confirmLabel: 'Chuyển Hội đồng',
+      type: 'info',
+      onConfirm: () => {
+        const updatedDossier: AcceptanceDossier = {
+          ...dossier,
+          status: 'FORWARDED_TO_COUNCIL',
+        };
+
+        const updatedProject = repo.updateProject(project.id, {
+          acceptanceDossier: updatedDossier,
+        });
+
+        if (!updatedProject) {
+          error('Không thể chuyển hồ sơ sang Hội đồng.');
+          return;
+        }
+
+        repo.addAuditLog({
+          userId: currentUser.id,
+          userFullName: currentUser.fullName,
+          userRole: currentUser.role,
+          actionCode:
+            'ACCEPTANCE_DOSSIER_FORWARDED_TO_COUNCIL',
+          entityType: 'ACCEPTANCE',
+          entityId: dossier.id,
+          fromStatus: dossier.status,
+          toStatus: 'FORWARDED_TO_COUNCIL',
+          notes:
+            'Hồ sơ nghiệm thu đã được chuyển sang bước tổ chức Hội đồng.',
+        });
+
+        setDossier(updatedDossier);
+        success(
+          'Đã chuyển hồ sơ sang bước tổ chức Hội đồng nghiệm thu.'
+        );
+      },
+    });
+  };
+
+  const getDossierStatusBadge = (
+    status?: AcceptanceDossierStatus
+  ) => {
+    const className =
+      'inline-flex rounded-full border px-2.5 py-0.5 text-xs font-bold';
+
     switch (status) {
       case 'DRAFT':
-        return <span className="bg-slate-100 text-slate-800 border-slate-200 border text-xs px-2.5 py-0.5 rounded-full font-bold">Dự thảo</span>;
+        return (
+          <span
+            className={`${className} border-slate-200 bg-slate-100 text-slate-800`}
+          >
+            Dự thảo
+          </span>
+        );
       case 'SUBMITTED':
-        return <span className="bg-amber-50 text-amber-850 border-amber-200 border text-xs px-2.5 py-0.5 rounded-full font-bold">Chờ thẩm định</span>;
+        return (
+          <span
+            className={`${className} border-amber-200 bg-amber-50 text-amber-800`}
+          >
+            Chờ tiếp nhận
+          </span>
+        );
+      case 'RESUBMITTED':
+        return (
+          <span
+            className={`${className} border-amber-200 bg-amber-50 text-amber-800`}
+          >
+            Đã nộp lại
+          </span>
+        );
       case 'UNDER_ADMIN_REVIEW':
-        return <span className="bg-blue-50 text-blue-800 border-blue-200 border text-xs px-2.5 py-0.5 rounded-full font-bold">Đang thẩm định hành chính</span>;
+        return (
+          <span
+            className={`${className} border-blue-200 bg-blue-50 text-blue-800`}
+          >
+            Đang kiểm tra hồ sơ
+          </span>
+        );
       case 'REVISION_REQUIRED':
-        return <span className="bg-orange-50 text-orange-850 border-orange-200 border text-xs px-2.5 py-0.5 rounded-full font-bold">Yêu cầu sửa đổi</span>;
+        return (
+          <span
+            className={`${className} border-rose-200 bg-rose-50 text-rose-800`}
+          >
+            Cần bổ sung
+          </span>
+        );
       case 'ELIGIBLE_FOR_ACCEPTANCE':
-        return <span className="bg-sky-50 text-sky-850 border-sky-200 border text-xs px-2.5 py-0.5 rounded-full font-bold">Đủ điều kiện Nghiệm thu</span>;
+        return (
+          <span
+            className={`${className} border-sky-200 bg-sky-50 text-[#0A6EBD]`}
+          >
+            Đủ điều kiện nghiệm thu
+          </span>
+        );
       case 'FORWARDED_TO_COUNCIL':
-        return <span className="bg-emerald-50 text-emerald-800 border-emerald-200 border text-xs px-2.5 py-0.5 rounded-full font-bold">Đã nghiệm thu (ACCEPTED)</span>;
+        return (
+          <span
+            className={`${className} border-violet-200 bg-violet-50 text-violet-800`}
+          >
+            Đã chuyển Hội đồng
+          </span>
+        );
       default:
-        return <span className="bg-slate-100 text-slate-600 border border-slate-200 text-xs px-2.5 py-0.5 rounded-full font-bold">Chưa nộp</span>;
+        return (
+          <span
+            className={`${className} border-slate-200 bg-slate-100 text-slate-600`}
+          >
+            Chưa nộp
+          </span>
+        );
     }
   };
 
+  const currentChecklist =
+    dossier?.checklistResults || reviewChecklist;
+
   return (
-    <div className="w-full space-y-6 pb-12">
+    <div className="w-full space-y-4 pb-12 text-slate-800">
       <PageHeader
         title="Hồ sơ Nghiệm thu Đề tài"
-        description={`Đề tài: ${project.title}`}
+        description={`Mã đề tài: ${
+          project.projectCode || project.proposalCode
+        } • ${project.title}`}
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link
               href={`/projects/${project.id}`}
-              className="inline-flex items-center gap-1 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-bold px-3.5 py-2 rounded-xl transition shadow-xs"
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
             >
-              <ArrowLeft className="w-3.5 h-3.5" /> Quay lại Chi tiết
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Quay lại đề tài
             </Link>
-            {canSubmitAcceptanceDossier(currentUser) && !dossier && (
+
+            {canSubmit && !dossier && (
               <button
-                onClick={() => setShowAddModal(true)}
-                className="inline-flex items-center gap-1.5 bg-[#0A6EBD] hover:bg-[#085896] text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm transition"
+                type="button"
+                onClick={openSubmissionModal}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A6EBD] px-3.5 py-2 text-xs font-bold text-white transition hover:bg-[#085896]"
               >
-                <Plus className="w-4 h-4" /> Nộp hồ sơ nghiệm thu
+                <Plus className="h-4 w-4" />
+                Nộp hồ sơ nghiệm thu
               </button>
             )}
-            {canReviewAcceptanceDossier(currentUser) && dossier?.status === 'SUBMITTED' && (
-              <>
-                <button
-                  onClick={() => handleVerifyChecklist('REVISION_REQUIRED')}
-                  className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm transition"
-                >
-                  <X className="w-4 h-4" /> Từ chối hành chính
-                </button>
-                <button
-                  onClick={() => handleVerifyChecklist('ELIGIBLE_FOR_ACCEPTANCE')}
-                  className="inline-flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm transition"
-                >
-                  <Check className="w-4 h-4" /> Xác nhận Hợp lệ
-                </button>
-              </>
-            )}
-            {canReviewAcceptanceDossier(currentUser) && dossier?.status === 'ELIGIBLE_FOR_ACCEPTANCE' && (
+
+            {canSubmit && isResubmission && (
               <button
-                onClick={handleApproveAcceptance}
-                className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm transition"
+                type="button"
+                onClick={openSubmissionModal}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A6EBD] px-3.5 py-2 text-xs font-bold text-white transition hover:bg-[#085896]"
               >
-                <CheckCircle2 className="w-4 h-4" /> Thông qua Nghiệm thu
+                <Upload className="h-4 w-4" />
+                Nộp lại hồ sơ
               </button>
             )}
+
+            {canReview &&
+              (dossier?.status === 'SUBMITTED' ||
+                dossier?.status === 'RESUBMITTED') && (
+                <button
+                  type="button"
+                  onClick={handleReceiveForReview}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A6EBD] px-3.5 py-2 text-xs font-bold text-white transition hover:bg-[#085896]"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Tiếp nhận hồ sơ
+                </button>
+              )}
+
+            {canReview &&
+              dossier?.status === 'UNDER_ADMIN_REVIEW' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleVerifyChecklist(
+                        'REVISION_REQUIRED'
+                      )
+                    }
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-rose-700"
+                  >
+                    <X className="h-4 w-4" />
+                    Yêu cầu bổ sung
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleVerifyChecklist(
+                        'ELIGIBLE_FOR_ACCEPTANCE'
+                      )
+                    }
+                    disabled={!checklistAllPassed}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Check className="h-4 w-4" />
+                    Xác nhận hợp lệ
+                  </button>
+                </>
+              )}
+
+            {canReview &&
+              dossier?.status ===
+                'ELIGIBLE_FOR_ACCEPTANCE' && (
+                <button
+                  type="button"
+                  onClick={handleForwardToCouncil}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-violet-700"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Chuyển Hội đồng nghiệm thu
+                </button>
+              )}
           </div>
         }
       />
 
-      <div className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5">
+      <div className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200/80 bg-white p-4 md:flex-row md:items-center">
         <div className="space-y-1">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Trạng thái hồ sơ nghiệm thu</span>
+          <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Trạng thái hồ sơ nghiệm thu
+          </span>
           {getDossierStatusBadge(dossier?.status)}
         </div>
+
         <div className="flex flex-col items-start md:items-end">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Mức độ hoàn thành sản phẩm</span>
+          <span className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Tỷ lệ hoàn thành do Chủ nhiệm khai báo
+          </span>
           {dossier ? (
-            <strong className="text-2xl font-mono font-extrabold text-[#0A6EBD]">
-              {dossier.completionPercentage}%
+            <strong className="font-mono text-2xl font-extrabold text-[#0A6EBD]">
+              {dossier.claimedOverallCompletionPercentage ??
+                '—'}
+              {dossier.claimedOverallCompletionPercentage !==
+              undefined
+                ? '%'
+                : ''}
             </strong>
           ) : (
-            <span className="bg-slate-100 text-slate-600 border border-slate-200 text-xs px-2.5 py-0.5 rounded-full font-bold mt-0.5">
-              Chưa đánh giá
+            <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-600">
+              Chưa khai báo
             </span>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Products comparison */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-          <h3 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2 uppercase tracking-wide flex items-center gap-1.5">
-            <Award className="w-4 h-4 text-slate-500" />
-            <span>Đối chiếu sản phẩm khoa học bàn giao</span>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="space-y-4 rounded-xl border border-slate-200/80 bg-white p-5 lg:col-span-2">
+          <h3 className="flex items-center gap-1.5 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wide text-slate-900">
+            <FileCheck2 className="h-4 w-4 text-slate-500" />
+            Đối chiếu sản phẩm khoa học bàn giao
           </h3>
 
           {dossier ? (
             <div className="space-y-4 text-xs font-medium">
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                <span className="text-slate-500 font-semibold block mb-1">Sản phẩm cam kết trong Đề cương:</span>
-                <p className="text-slate-900 font-bold leading-relaxed">{dossier.productsCommitted}</p>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5">
+                <span className="mb-1 block font-semibold text-slate-500">
+                  Sản phẩm cam kết trong đề cương
+                </span>
+                <p className="font-bold leading-relaxed text-slate-900">
+                  {dossier.productsCommitted}
+                </p>
               </div>
 
-              <div className="bg-emerald-50/20 p-3.5 rounded-xl border border-emerald-100">
-                <span className="text-emerald-700 font-bold block mb-1">Sản phẩm thực tế bàn giao:</span>
-                <p className="text-slate-900 font-bold leading-relaxed">{dossier.productsActual}</p>
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50/30 p-3.5">
+                <span className="mb-1 block font-bold text-emerald-800">
+                  Sản phẩm thực tế bàn giao
+                </span>
+                <p className="font-bold leading-relaxed text-slate-900">
+                  {dossier.productsActual}
+                </p>
               </div>
 
               {dossier.productsSummary && (
                 <div>
-                  <span className="text-slate-500 font-semibold block mb-1">Tóm tắt kết quả nghiệm thu:</span>
-                  <p className="p-3 bg-slate-50 border border-slate-150 rounded-lg text-slate-600 leading-relaxed font-semibold">
+                  <span className="mb-1 block font-semibold text-slate-500">
+                    Tóm tắt kết quả
+                  </span>
+                  <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 font-semibold leading-relaxed text-slate-600">
                     {dossier.productsSummary}
                   </p>
                 </div>
               )}
+
+              {dossier.evidenceUrls.length > 0 && (
+                <div className="pt-2">
+                  <span className="mb-1 block font-semibold text-slate-500">
+                    Tài liệu / Minh chứng
+                  </span>
+
+                  <div className="flex flex-wrap gap-2">
+                    {dossier.evidenceUrls.map(
+                      (file, index) => (
+                        <span
+                          key={`${file.name}-${index}`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                        >
+                          <Paperclip className="h-3.5 w-3.5 text-slate-400" />
+                          {file.name}
+                        </span>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-2xl mb-3 text-slate-400">
-                <FileCheck2 className="w-8 h-8" />
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="mb-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 text-slate-400">
+                <FileCheck2 className="h-8 w-8" />
               </div>
-              <h4 className="text-slate-800 font-bold text-[13px] mb-1">Chưa nộp Hồ sơ Nghiệm thu</h4>
-              <p className="text-slate-500 text-xs max-w-xs leading-relaxed mb-4">
-                Chủ nhiệm đề tài cần khởi tạo và nộp hồ sơ nghiệm thu báo cáo kết quả cùng các sản phẩm nghiên cứu thực tế.
+              <h4 className="mb-1 text-xs font-bold text-slate-800">
+                Chưa nộp Hồ sơ Nghiệm thu
+              </h4>
+              <p className="max-w-xs text-xs leading-relaxed text-slate-500">
+                Chủ nhiệm nộp hồ sơ nghiệm thu khi đề tài đã
+                hoàn thành nội dung nghiên cứu và đủ điều kiện
+                theo policy áp dụng.
               </p>
-              {currentUser.role === 'RESEARCHER' && (
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(true)}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#0A6EBD] hover:bg-[#085896] text-white text-[11px] font-bold rounded-lg transition shadow-xs"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Nộp hồ sơ nghiệm thu
-                </button>
-              )}
             </div>
           )}
         </div>
 
-        {/* Checklist */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-          <h3 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2 uppercase tracking-wide flex items-center gap-1.5">
-            <ListChecks className="w-4 h-4 text-slate-500" />
-            <span>Checklist điều kiện Nghiệm thu</span>
+        <div className="space-y-4 rounded-xl border border-slate-200/80 bg-white p-5">
+          <h3 className="flex items-center gap-1.5 border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wide text-slate-900">
+            <ListChecks className="h-4 w-4 text-slate-500" />
+            Checklist điều kiện nghiệm thu
           </h3>
 
-          <div className="space-y-3.5">
-            {[
-              { label: 'Nộp báo cáo tổng kết đề tài', val: dossier?.checklistResults?.finalReportSubmitted },
-              { label: 'Bàn giao đầy đủ sản phẩm cam kết', val: dossier?.checklistResults?.productsCompleted },
-              { label: 'Đầy đủ minh chứng khoa học', val: dossier?.checklistResults?.evidenceValid },
-              { label: 'Hoàn thành các mốc báo cáo tiến độ', val: dossier?.checklistResults?.progressReportsCompleted },
-              { label: 'Không có yêu cầu điều chỉnh nào đang treo', val: dossier?.checklistResults?.noPendingChangeRequests },
-              { label: 'Thời hạn hiệu lực chấp thuận IRB hợp lệ', val: dossier?.checklistResults?.ethicsValid },
-              { label: 'Đủ điều kiện thanh quyết toán tài chính', val: dossier?.checklistResults?.financeConditionMet },
-            ].map((item, idx) => (
-              <div key={idx} className="flex items-start justify-between gap-4 text-xs font-semibold">
-                <span className="text-slate-600 leading-snug">{item.label}</span>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                  item.val 
-                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
-                    : 'bg-rose-50 text-rose-700 border border-rose-200/80'
-                }`}>
-                  {item.val ? 'ĐẠT' : 'CHƯA'}
-                </span>
-              </div>
-            ))}
-          </div>
+          {!dossier ? (
+            <p className="text-xs text-slate-500">
+              Checklist được Phòng NCKH kiểm tra sau khi tiếp
+              nhận hồ sơ.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {CHECKLIST_ITEMS.map((item) => {
+                const editable =
+                  canReview &&
+                  dossier.status ===
+                    'UNDER_ADMIN_REVIEW';
+
+                const value = editable
+                  ? reviewChecklist[item.key]
+                  : currentChecklist[item.key];
+
+                return (
+                  <div
+                    key={item.key}
+                    className="flex items-start justify-between gap-3 text-xs font-semibold"
+                  >
+                    <span className="leading-snug text-slate-600">
+                      {item.label}
+                    </span>
+
+                    {editable ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setReviewChecklist((current) => ({
+                            ...current,
+                            [item.key]:
+                              !current[item.key],
+                          }))
+                        }
+                        className={`shrink-0 rounded border px-2 py-0.5 text-[10px] font-bold ${
+                          value
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            : 'border-slate-300 bg-white text-slate-500'
+                        }`}
+                      >
+                        {value ? 'ĐẠT' : 'CHƯA'}
+                      </button>
+                    ) : (
+                      <span
+                        className={`shrink-0 rounded border px-2 py-0.5 text-[10px] font-bold ${
+                          value
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            : 'border-slate-200 bg-slate-50 text-slate-400'
+                        }`}
+                      >
+                        {value ? 'ĐẠT' : 'CHƯA'}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Add Dossier Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
-            <form onSubmit={handleCreateDossier}>
-              <div className="px-5 py-4 border-b border-slate-100 bg-[#0B2A63] text-white flex justify-between items-center">
-                <h3 className="font-bold text-sm">Nộp Hồ sơ Nghiệm thu đề tài</h3>
-                <button type="button" onClick={() => setShowAddModal(false)} className="text-white/80 hover:text-white">✕</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white text-xs shadow-2xl">
+            <form onSubmit={handleSubmitDossier}>
+              <div className="flex items-center justify-between border-b border-slate-100 bg-[#0B2A63] px-5 py-4 text-white">
+                <h3 className="text-sm font-bold">
+                  {isResubmission
+                    ? 'Nộp lại Hồ sơ Nghiệm thu'
+                    : 'Nộp Hồ sơ Nghiệm thu đề tài'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="text-white/80 hover:text-white"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
-              <div className="p-5 space-y-4">
+
+              <div className="max-h-[75vh] space-y-3.5 overflow-y-auto p-5">
+                <Field
+                  label="Sản phẩm cam kết (theo đề cương)"
+                  value={formData.productsCommitted}
+                  onChange={(value) =>
+                    setFormData({
+                      ...formData,
+                      productsCommitted: value,
+                    })
+                  }
+                />
+
+                <Field
+                  label="Sản phẩm thực tế bàn giao"
+                  value={formData.productsActual}
+                  onChange={(value) =>
+                    setFormData({
+                      ...formData,
+                      productsActual: value,
+                    })
+                  }
+                />
+
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Sản phẩm cam kết (theo đề cương) *</label>
-                  <input
-                    type="text"
-                    required
-                    className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD] outline-none"
-                    value={formData.productsCommitted}
-                    onChange={(e) => setFormData({ ...formData, productsCommitted: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Sản phẩm thực tế bàn giao *</label>
-                  <input
-                    type="text"
-                    required
-                    className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD] outline-none"
-                    value={formData.productsActual}
-                    onChange={(e) => setFormData({ ...formData, productsActual: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">% Hoàn thành thực tế *</label>
+                  <label className="mb-1 block font-bold text-slate-700">
+                    % hoàn thành do Chủ nhiệm khai báo
+                  </label>
                   <input
                     type="number"
                     max={100}
                     min={0}
                     required
-                    className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD] outline-none font-mono"
-                    value={formData.completionPercentage}
-                    onChange={(e) => setFormData({ ...formData, completionPercentage: Number(e.target.value) })}
+                    value={
+                      formData.claimedOverallCompletionPercentage
+                    }
+                    onChange={(event) =>
+                      setFormData({
+                        ...formData,
+                        claimedOverallCompletionPercentage:
+                          Number(event.target.value),
+                      })
+                    }
+                    className="w-full rounded-lg border border-slate-200 p-2 font-mono text-xs outline-none focus:border-[#0A6EBD]"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">Tóm tắt kết quả khoa học đạt được</label>
+                  <label className="mb-1 block font-bold text-slate-700">
+                    File báo cáo/minh chứng (.docx, .pdf)
+                  </label>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      accept=".doc,.docx,.pdf"
+                      onChange={(event) =>
+                        setEvidenceFile(
+                          event.target.files?.[0] || null
+                        )
+                      }
+                      className="hidden"
+                      id="evidence-upload"
+                    />
+
+                    <label
+                      htmlFor="evidence-upload"
+                      className="cursor-pointer rounded-lg border border-slate-300 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-200"
+                    >
+                      <Upload className="mr-1 inline h-3.5 w-3.5" />
+                      Chọn file
+                    </label>
+
+                    <span className="max-w-[200px] truncate text-slate-500">
+                      {evidenceFile
+                        ? evidenceFile.name
+                        : 'Chưa chọn file'}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1 block font-bold text-slate-700">
+                    Tóm tắt kết quả khoa học đạt được
+                  </label>
                   <textarea
                     rows={3}
-                    className="w-full border border-slate-200 rounded-lg p-2.5 text-xs focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD] outline-none"
-                    placeholder="Mô tả tóm tắt các sản phẩm và đóng góp mới của đề tài..."
                     value={formData.productsSummary}
-                    onChange={(e) => setFormData({ ...formData, productsSummary: e.target.value })}
+                    onChange={(event) =>
+                      setFormData({
+                        ...formData,
+                        productsSummary: event.target.value,
+                      })
+                    }
+                    className="w-full resize-none rounded-lg border border-slate-200 p-2.5 text-xs outline-none focus:border-[#0A6EBD]"
                   />
                 </div>
               </div>
-              <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
-                <button type="button" onClick={() => setShowAddModal(false)} className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-100">Hủy</button>
-                <button type="submit" className="px-3.5 py-1.5 text-xs font-bold text-white bg-[#0A6EBD] hover:bg-[#085896] rounded-xl shadow-xs">Nộp hồ sơ</button>
+
+              <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3.5">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="rounded-xl border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  Hủy
+                </button>
+
+                <button
+                  type="submit"
+                  className="rounded-xl bg-[#0A6EBD] px-3.5 py-1.5 text-xs font-bold text-white hover:bg-[#085896]"
+                >
+                  {isResubmission
+                    ? 'Nộp lại hồ sơ'
+                    : 'Nộp hồ sơ'}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <label className="mb-1 block font-bold text-slate-700">
+        {label} *
+      </label>
+      <input
+        type="text"
+        required
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-lg border border-slate-200 p-2 text-xs outline-none focus:border-[#0A6EBD]"
+      />
     </div>
   );
 }

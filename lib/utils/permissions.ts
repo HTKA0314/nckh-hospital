@@ -1,98 +1,291 @@
-import { User, ResearchProject } from '@/lib/types';
+import {
+  ResearchProject,
+  User,
+} from '@/lib/types';
 import { Council } from '@/lib/types';
 
-// Permission helpers for mockup flows.
-// Keep simple and explicit so UI can enforce role-separated actions.
+/**
+ * Permission helpers
+ *
+ * Nguyên tắc:
+ * - Role chỉ xác định nhóm quyền nghiệp vụ.
+ * - Quyền thao tác cụ thể phải kết hợp:
+ *   role + ownership + entity membership + workflow state.
+ * - ADMIN không tự động kế thừa quyền nghiệp vụ.
+ */
 
-export function canReviewProposal(user?: User | null): boolean {
+/* =========================================================
+ * PROPOSAL / ADMINISTRATIVE REVIEW
+ * ======================================================= */
+
+export function canReviewProposal(
+  user?: User | null
+): boolean {
   if (!user) return false;
-  return ['RESEARCH_OFFICE', 'DIRECTOR', 'ADMIN'].includes(user.role);
+
+  return user.role === 'RESEARCH_OFFICE';
 }
 
-export function canSubmitResubmission(user?: User | null, project?: ResearchProject | null): boolean {
+/**
+ * Chủ nhiệm chỉ được nộp lại hồ sơ của chính mình.
+ *
+ * State cụ thể nên được kiểm tra ở workflow/page:
+ * REVISION_REQUIRED hoặc PROPOSAL_REVISION_REQUIRED.
+ */
+export function canSubmitResubmission(
+  user?: User | null,
+  project?: ResearchProject | null
+): boolean {
   if (!user || !project) return false;
-  // Principal Investigator or Admin can submit resubmission
-  return user.id === project.principalInvestigatorId || user.role === 'ADMIN';
+
+  return (
+    user.role === 'RESEARCHER' &&
+    user.id === project.principalInvestigatorId
+  );
 }
 
-export function isCouncilMember(user?: User | null, council?: Council | null): boolean {
-  if (!user) return false;
-  if (!council) {
-    return ['COUNCIL_MEMBER', 'COUNCIL_SECRETARY' as any, 'ADMIN'].includes(user.role);
-  }
+/* =========================================================
+ * SCIENTIFIC COUNCIL
+ * ======================================================= */
 
-  if (user.role === 'ADMIN') return true;
-  if (user.role === 'COUNCIL_MEMBER' || user.role === 'COUNCIL_SECRETARY' as any) {
-    return council.members.some((m) => m.userId === user.id);
-  }
-
-  return council.members.some((m) => m.userId === user.id);
-}
-
-export function isCouncilChair(user?: User | null, council?: Council | null): boolean {
+export function isCouncilMember(
+  user?: User | null,
+  council?: Council | null
+): boolean {
   if (!user || !council) return false;
-  return council.members.some((m) => m.userId === user.id && m.roleInCouncil === 'CHỦ_TỊCH');
+
+  return council.members.some(
+    (member) => member.userId === user.id
+  );
 }
 
-export function isCouncilSecretary(user?: User | null, council?: Council | null): boolean {
+export function isCouncilChair(
+  user?: User | null,
+  council?: Council | null
+): boolean {
   if (!user || !council) return false;
-  return council.members.some((m) => m.userId === user.id && m.roleInCouncil === 'THƯ_KÝ');
+
+  return council.members.some(
+    (member) =>
+      member.userId === user.id &&
+      member.roleInCouncil === 'CHỦ_TỊCH'
+  );
 }
 
-export function canSignMinutes(user?: User | null, council?: Council | null): boolean {
+export function isCouncilSecretary(
+  user?: User | null,
+  council?: Council | null
+): boolean {
   if (!user || !council) return false;
-  // Only Chair or Secretary may sign minutes for this council.
-  return isCouncilChair(user, council) || isCouncilSecretary(user, council) || user.role === 'ADMIN';
+
+  return council.members.some(
+    (member) =>
+      member.userId === user.id &&
+      member.roleInCouncil === 'THƯ_KÝ'
+  );
 }
 
-export function canCreateMinutes(user?: User | null): boolean {
-  if (!user) return false;
-  // Phòng KHTH / Phòng NCKH role mapped to RESEARCH_OFFICE; Admin can too
-  return user.role === 'RESEARCH_OFFICE' || user.role === 'ADMIN';
+/**
+ * Chỉ Chủ tịch hoặc Thư ký của chính Hội đồng đó
+ * được ký biên bản.
+ */
+export function canSignMinutes(
+  user?: User | null,
+  council?: Council | null
+): boolean {
+  if (!user || !council) return false;
+
+  return (
+    isCouncilChair(user, council) ||
+    isCouncilSecretary(user, council)
+  );
 }
 
-export function canReviewEthics(user?: User | null): boolean {
-  if (!user) return false;
-  return user.role === 'ETHICS_OFFICE' || user.role === 'ADMIN';
+/**
+ * Lập/chỉnh biên bản cũng phải gắn với Hội đồng cụ thể.
+ *
+ * Nếu nghiệp vụ sau này quy định chỉ Thư ký được lập
+ * thì có thể đổi hàm này thành isCouncilSecretary().
+ */
+export function canCreateMinutes(
+  user?: User | null,
+  council?: Council | null
+): boolean {
+  if (!user || !council) return false;
+
+  return (
+    isCouncilSecretary(user, council) ||
+    isCouncilChair(user, council)
+  );
 }
 
-export function canApproveDecision(user?: User | null): boolean {
-  if (!user) return false;
-  return user.role === 'DIRECTOR' || user.role === 'ADMIN';
+/**
+ * Thành viên Hội đồng được nộp phiếu đánh giá
+ * nếu thực sự thuộc Hội đồng đó.
+ */
+export function canSubmitCouncilEvaluation(
+  user?: User | null,
+  council?: Council | null
+): boolean {
+  return isCouncilMember(user, council);
 }
 
-export function canDraftDecision(user?: User | null): boolean {
+/* =========================================================
+ * ETHICS
+ * ======================================================= */
+
+export function canReviewEthics(
+  user?: User | null
+): boolean {
   if (!user) return false;
-  return user.role === 'RESEARCH_OFFICE' || user.role === 'ADMIN';
+
+  return user.role === 'ETHICS_OFFICE';
 }
 
-export function canIssueDecision(user?: User | null): boolean {
+/* =========================================================
+ * DECISION
+ * ======================================================= */
+
+/**
+ * Giám đốc ký hoặc trả lại Quyết định.
+ */
+export function canApproveDecision(
+  user?: User | null
+): boolean {
   if (!user) return false;
-  return user.role === 'RESEARCH_OFFICE' || user.role === 'ADMIN';
+
+  return user.role === 'DIRECTOR';
 }
 
-export function canSubmitAcceptanceDossier(user?: User | null): boolean {
+/**
+ * Phòng NCKH lập dự thảo Quyết định.
+ */
+export function canDraftDecision(
+  user?: User | null
+): boolean {
   if (!user) return false;
-  return user.role === 'RESEARCHER' || user.role === 'ADMIN';
+
+  return user.role === 'RESEARCH_OFFICE';
 }
 
-export function canReviewAcceptanceDossier(user?: User | null): boolean {
+/**
+ * Sau khi Giám đốc ký, Phòng NCKH thực hiện ban hành.
+ */
+export function canIssueDecision(
+  user?: User | null
+): boolean {
   if (!user) return false;
-  return user.role === 'RESEARCH_OFFICE' || user.role === 'ADMIN';
+
+  return user.role === 'RESEARCH_OFFICE';
+}
+
+/* =========================================================
+ * ACCEPTANCE DOSSIER
+ * ======================================================= */
+
+/**
+ * Chủ nhiệm nộp hồ sơ nghiệm thu của chính đề tài.
+ */
+export function canSubmitAcceptanceDossier(
+  user?: User | null,
+  project?: ResearchProject | null
+): boolean {
+  if (!user || !project) return false;
+
+  return (
+    user.role === 'RESEARCHER' &&
+    user.id === project.principalInvestigatorId
+  );
+}
+
+/**
+ * Phòng NCKH tiếp nhận và kiểm tra hành chính
+ * hồ sơ nghiệm thu.
+ */
+export function canReviewAcceptanceDossier(
+  user?: User | null
+): boolean {
+  if (!user) return false;
+
+  return user.role === 'RESEARCH_OFFICE';
+}
+
+/* =========================================================
+ * CHANGE REQUEST
+ * ======================================================= */
+
+export function canSubmitChangeRequest(
+  user?: User | null,
+  project?: ResearchProject | null
+): boolean {
+  if (!user || !project) return false;
+
+  return (
+    user.role === 'RESEARCHER' &&
+    user.id === project.principalInvestigatorId &&
+    (
+      project.status === 'IN_PROGRESS' ||
+      project.status === 'SUSPENDED'
+    )
+  );
+}
+
+export function canReviewChangeRequest(
+  user?: User | null
+): boolean {
+  if (!user) return false;
+
+  return user.role === 'RESEARCH_OFFICE';
+}
+
+/* =========================================================
+ * PROGRESS
+ * ======================================================= */
+
+export function canSubmitProgressReport(
+  user?: User | null,
+  project?: ResearchProject | null
+): boolean {
+  if (!user || !project) return false;
+
+  return (
+    user.role === 'RESEARCHER' &&
+    user.id === project.principalInvestigatorId &&
+    project.status === 'IN_PROGRESS'
+  );
+}
+
+export function canReviewProgressReport(
+  user?: User | null
+): boolean {
+  if (!user) return false;
+
+  return user.role === 'RESEARCH_OFFICE';
 }
 
 export default {
   canReviewProposal,
   canSubmitResubmission,
+
   isCouncilMember,
   isCouncilChair,
   isCouncilSecretary,
   canSignMinutes,
   canCreateMinutes,
+  canSubmitCouncilEvaluation,
+
   canReviewEthics,
+
   canApproveDecision,
   canDraftDecision,
   canIssueDecision,
+
   canSubmitAcceptanceDossier,
   canReviewAcceptanceDossier,
+
+  canSubmitChangeRequest,
+  canReviewChangeRequest,
+
+  canSubmitProgressReport,
+  canReviewProgressReport,
 };

@@ -215,11 +215,11 @@ export default function ProgressWorkspacePage() {
                                   ? 'bg-emerald-500'
                                   : 'bg-[#0A6EBD]'
                               }`}
-                              style={{ width: `${p.progressPercentage || 0}%` }}
+                              style={{ width: `${p.reportedProgressPercentage ?? 0}%` }}
                             />
                           </div>
                           <span className="font-mono font-bold text-xs text-slate-700 w-9 text-right">
-                            {p.status === 'ACCEPTED' ? '100%' : `${p.progressPercentage || 0}%`}
+                            {p.status === 'ACCEPTED' ? '100%' : `${p.reportedProgressPercentage ?? 0}%`}
                           </span>
                         </div>
                       </td>

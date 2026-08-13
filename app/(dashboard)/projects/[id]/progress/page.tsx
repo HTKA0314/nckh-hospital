@@ -1,15 +1,14 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { repo } from '@/lib/repository';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/Toast';
 import { PageHeader } from '@/components/common/PageHeader';
 import { DataTable, ColumnDef } from '@/components/common/DataTable';
 import { ProjectMilestone, ProgressReport, ProgressReportStatus, MilestoneStatus } from '@/lib/types';
-import { formatVND, formatDate } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
 import { 
   ArrowLeft,
   Activity,
@@ -18,20 +17,13 @@ import {
   Clock,
   AlertCircle,
   FileText,
-  Upload,
   Calendar,
-  Eye,
-  Check,
-  Building2,
-  Sparkles,
-  CheckCircle
 } from 'lucide-react';
 
 export default function ProjectProgressPage({ params }: { params: { id: string } }) {
-  const router = useRouter();
   const project = repo.getProjectById(params.id);
   const { currentUser } = useAuth();
-  const { success, warning, error, confirm } = useToast();
+  const { success, warning, confirm } = useToast();
 
   const [milestones, setMilestones] = useState<ProjectMilestone[]>(() => project?.milestones || []);
   const [reports, setReports] = useState<ProgressReport[]>(() => project?.progressReports || []);
@@ -50,7 +42,7 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
     period: 'Kỳ báo cáo định kỳ',
     workCompleted: '',
     resultsAchieved: '',
-    completedPercentage: 50,
+    reportedCompletionPercentage: 50,
     nextPlan: '',
   });
 
@@ -69,8 +61,25 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
     );
   }
 
+  const isPrincipalInvestigator =
+    currentUser.role === 'RESEARCHER' &&
+    currentUser.id === project.principalInvestigatorId;
+
+  const canSubmitProgress =
+    isPrincipalInvestigator &&
+    project.status === 'IN_PROGRESS';
+
+  const canManageProgress =
+    currentUser.role === 'RESEARCH_OFFICE' &&
+    (project.status === 'IN_PROGRESS' || project.status === 'SUSPENDED');
+
   const handleAddMilestone = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!canManageProgress) {
+      warning('Bạn không có quyền lập mốc tiến độ cho đề tài này.');
+      return;
+    }
     if (!newMilestone.title || !newMilestone.targetDate) {
       warning('Vui lòng điền đầy đủ các thông tin mốc bắt buộc.');
       return;
@@ -107,16 +116,26 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
 
   const handleAddReport = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!canSubmitProgress) {
+      warning('Chỉ Chủ nhiệm đề tài đang thực hiện mới được nộp báo cáo tiến độ.');
+      return;
+    }
+
+    if (!newReport.workCompleted.trim() || !newReport.resultsAchieved.trim() || !newReport.nextPlan.trim()) {
+      warning('Vui lòng nhập đầy đủ nội dung báo cáo tiến độ.');
+      return;
+    }
     const report: ProgressReport = {
       id: `pr-${Date.now()}`,
       projectId: project.id,
       period: newReport.period,
-      reportingDate: new Date().toLocaleDateString('vi-VN'),
+      reportingDate: new Date().toISOString(),
       workCompleted: newReport.workCompleted,
       resultsAchieved: newReport.resultsAchieved,
-      completedPercentage: Number(newReport.completedPercentage),
+      reportedCompletionPercentage: Number(newReport.reportedCompletionPercentage),
       nextPlan: newReport.nextPlan,
-      evidenceUrls: [{ name: 'Minh_chung_tien_do.pdf', url: '#' }],
+      evidenceUrls: [],
       status: 'SUBMITTED',
     };
 
@@ -133,16 +152,57 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
       actionCode: 'SUBMIT_PROGRESS_REPORT',
       entityType: 'PROJECT',
       entityId: project.id,
-      notes: `Nộp báo cáo tiến độ kỳ: ${report.period} (${report.completedPercentage}% hoàn thành)`,
+      notes: `Nộp báo cáo tiến độ kỳ: ${report.period} (${report.reportedCompletionPercentage}% hoàn thành)`,
     });
   };
 
-  const handleReviewReport = (status: 'APPROVED' | 'REVISION_REQUIRED') => {
-    if (!selectedReport) return;
+  const handleReceiveReport = () => {
+    if (!selectedReport || !canManageProgress || selectedReport.status !== 'SUBMITTED') return;
+
+    const updatedReports = reports.map((report) =>
+      report.id === selectedReport.id
+        ? {
+            ...report,
+            status: 'UNDER_REVIEW' as ProgressReportStatus,
+            reviewedBy: currentUser.fullName,
+            reviewedAt: new Date().toISOString(),
+          }
+        : report
+    );
+
+    repo.updateProject(project.id, { progressReports: updatedReports });
+    setReports(updatedReports);
+    setSelectedReport({
+      ...selectedReport,
+      status: 'UNDER_REVIEW',
+      reviewedBy: currentUser.fullName,
+      reviewedAt: new Date().toISOString(),
+    });
+
+    repo.addAuditLog({
+      userId: currentUser.id,
+      userFullName: currentUser.fullName,
+      userRole: currentUser.role,
+      actionCode: 'RECEIVE_PROGRESS_REPORT',
+      entityType: 'PROJECT',
+      entityId: project.id,
+      notes: `Tiếp nhận báo cáo tiến độ kỳ ${selectedReport.period} để đánh giá.`,
+    });
+
+    success('Đã tiếp nhận báo cáo và chuyển sang trạng thái đang đánh giá.');
+  };
+
+  const handleReviewReport = (status: 'APPROVED' | 'REVISION_REQUIRED' | 'REJECTED') => {
+    if (!selectedReport || !canManageProgress || selectedReport.status !== 'UNDER_REVIEW') return;
+
+    if (status !== 'APPROVED' && !reviewComment.trim()) {
+      warning('Vui lòng nhập ý kiến xử lý trước khi yêu cầu sửa đổi hoặc từ chối.');
+      return;
+    }
 
     confirm({
-      title: status === 'APPROVED' ? 'Duyệt báo cáo tiến độ' : 'Yêu cầu sửa đổi báo cáo',
-      message: `Bạn chắc chắn muốn đánh giá báo cáo này là "${status === 'APPROVED' ? 'Đạt' : 'Cần sửa đổi'}"?`,
+      title: status === 'APPROVED' ? 'Duyệt báo cáo tiến độ' : status === 'REJECTED' ? 'Từ chối báo cáo tiến độ' : 'Yêu cầu sửa đổi báo cáo',
+      message: `Bạn chắc chắn muốn đánh giá báo cáo này là "${status === 'APPROVED' ? 'Đạt' : status === 'REJECTED' ? 'Không đạt' : 'Cần sửa đổi'}"?`,
       confirmLabel: 'Xác nhận',
       onConfirm: () => {
         const updatedReports = reports.map((r) => {
@@ -152,18 +212,18 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
               status: status as ProgressReportStatus,
               reviewComment,
               reviewedBy: currentUser.fullName,
-              reviewedAt: new Date().toLocaleDateString('vi-VN'),
+              reviewedAt: new Date().toISOString(),
             };
           }
           return r;
         });
 
         // Cập nhật tiến độ dự án nếu được duyệt
-        const projectProgress = status === 'APPROVED' ? selectedReport.completedPercentage : project.progressPercentage;
+        const projectProgress = status === 'APPROVED' ? selectedReport.reportedCompletionPercentage : (project.reportedProgressPercentage ?? 0);
 
         repo.updateProject(project.id, { 
           progressReports: updatedReports,
-          progressPercentage: projectProgress
+          reportedProgressPercentage: projectProgress
         });
         setReports(updatedReports);
         setSelectedReport(null);
@@ -259,11 +319,11 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
       render: (row) => <span className="font-mono text-slate-500">{row.reportingDate}</span>,
     },
     {
-      key: 'completedPercentage',
+      key: 'reportedCompletionPercentage',
       header: '% Hoàn thành thực tế',
       render: (row) => (
         <span className="font-mono font-bold text-[#0A6EBD]">
-          {row.completedPercentage}%
+          {row.reportedCompletionPercentage}%
         </span>
       ),
     },
@@ -287,7 +347,7 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Quay lại Chi tiết
             </Link>
-            {currentUser.role === 'RESEARCHER' && (
+            {canSubmitProgress && (
               <button
                 onClick={() => setShowAddReport(true)}
                 className="inline-flex items-center gap-1.5 bg-[#0A6EBD] hover:bg-[#085896] text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm transition"
@@ -295,7 +355,7 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
                 <Plus className="w-4 h-4" /> Báo cáo tiến độ
               </button>
             )}
-            {currentUser.role === 'RESEARCH_OFFICE' && (
+            {canManageProgress && (
               <button
                 onClick={() => setShowAddMilestone(true)}
                 className="inline-flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm transition"
@@ -312,7 +372,7 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
         <div>
           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Tiến độ tổng thể</span>
           <div className="flex items-baseline gap-1 mt-1">
-            <span className="text-3xl font-extrabold text-[#0A6EBD] font-mono">{project.progressPercentage}%</span>
+            <span className="text-3xl font-extrabold text-[#0A6EBD] font-mono">{project.reportedProgressPercentage ?? 0}%</span>
             <span className="text-xs text-slate-400 font-semibold">hoàn thành</span>
           </div>
         </div>
@@ -322,7 +382,7 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
             <span>Kế hoạch 100%</span>
           </div>
           <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-            <div className="bg-[#0A6EBD] h-2.5 rounded-full transition-all duration-500" style={{ width: `${project.progressPercentage}%` }} />
+            <div className="bg-[#0A6EBD] h-2.5 rounded-full transition-all duration-500" style={{ width: `${project.reportedProgressPercentage ?? 0}%` }} />
           </div>
         </div>
       </div>
@@ -454,8 +514,8 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
                       max={100}
                       min={0}
                       className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD] outline-none font-mono"
-                      value={newReport.completedPercentage}
-                      onChange={(e) => setNewReport({ ...newReport, completedPercentage: Number(e.target.value) })}
+                      value={newReport.reportedCompletionPercentage}
+                      onChange={(e) => setNewReport({ ...newReport, reportedCompletionPercentage: Number(e.target.value) })}
                     />
                   </div>
                 </div>
@@ -516,7 +576,7 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
                 </div>
                 <div className="flex justify-between">
                   <span className="text-xs text-slate-500 font-semibold">Tiến độ báo cáo</span>
-                  <strong className="text-xs text-[#0A6EBD] font-mono">{selectedReport.completedPercentage}%</strong>
+                  <strong className="text-xs text-[#0A6EBD] font-mono">{selectedReport.reportedCompletionPercentage}%</strong>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-xs text-slate-500 font-semibold">Ngày nộp</span>
@@ -539,7 +599,7 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
                 <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded border border-slate-100">{selectedReport.nextPlan}</p>
               </div>
 
-              {selectedReport.status === 'SUBMITTED' && currentUser.role === 'RESEARCH_OFFICE' && (
+              {selectedReport.status === 'UNDER_REVIEW' && canManageProgress && (
                 <div className="space-y-2 pt-2 border-t border-slate-100">
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">Ý kiến chuyên môn / Phản hồi *</label>
                   <textarea
@@ -554,8 +614,23 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
             </div>
             <div className="p-4 bg-slate-50 border-t border-slate-200/80 flex items-center justify-end gap-2">
               <button type="button" onClick={() => setSelectedReport(null)} className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl">Đóng</button>
-              {selectedReport.status === 'SUBMITTED' && currentUser.role === 'RESEARCH_OFFICE' && (
+              {selectedReport.status === 'SUBMITTED' && canManageProgress && (
+                <button
+                  onClick={handleReceiveReport}
+                  className="px-4 py-2 text-xs font-bold text-white bg-[#0A6EBD] hover:bg-[#085896] rounded-xl"
+                >
+                  Tiếp nhận đánh giá
+                </button>
+              )}
+
+              {selectedReport.status === 'UNDER_REVIEW' && canManageProgress && (
                 <>
+                  <button
+                    onClick={() => handleReviewReport('REJECTED')}
+                    className="px-4 py-2 text-xs font-bold text-white bg-rose-700 hover:bg-rose-800 rounded-xl"
+                  >
+                    Không đạt
+                  </button>
                   <button
                     onClick={() => handleReviewReport('REVISION_REQUIRED')}
                     className="px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl"

@@ -16,7 +16,6 @@ import {
   Eye,
   X,
   MoreVertical,
-  Clock,
   CheckCircle2,
   FileText,
   AlertCircle,
@@ -28,11 +27,7 @@ import {
   Lock,
   Users,
   ShieldCheck,
-  ChevronRight,
   ArrowLeft,
-  Settings,
-  History,
-  FileSpreadsheet,
 } from 'lucide-react';
 
 /* ─────────────────────────────────────────────────────────────────
@@ -62,9 +57,6 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   HELPER: Days remaining
-   ───────────────────────────────────────────────────────────────── */
 function daysRemaining(endDate: string): number {
   const end = new Date(endDate);
   const today = new Date();
@@ -125,7 +117,7 @@ function RoundActionMenu({
         onClick();
         setOpen(false);
       }}
-      className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold transition text-left rounded-md ${
+      className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold transition text-left rounded-md cursor-pointer ${
         danger
           ? 'text-rose-600 hover:bg-rose-50'
           : 'text-slate-700 hover:bg-slate-50 hover:text-[#0A6EBD]'
@@ -143,27 +135,25 @@ function RoundActionMenu({
           e.stopPropagation();
           setOpen(!open);
         }}
-        className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+        className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer"
       >
         <MoreVertical className="w-4 h-4" />
       </button>
       {open && (
-        <div className="absolute right-0 top-7 z-30 w-44 bg-white border border-slate-200 rounded-xl shadow-lg py-1 animate-in fade-in zoom-in-95 duration-100">
-          {/* DRAFT */}
+        <div className="absolute right-0 top-7 z-30 w-44 bg-white border border-slate-200 rounded-xl shadow-lg py-1 animate-in fade-in duration-100">
           {round.status === 'DRAFT' && (
             <>
               {item(<Edit className="w-3.5 h-3.5" />, 'Chỉnh sửa', onEdit)}
               {canManage && item(<CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />, 'Mở đợt', onOpen)}
               <div className="border-t border-slate-100 my-1" />
-              {canManage && item(<Trash2 className="w-3.5 h-3.5" />, 'Xóa', onDelete, true)}
+              {canManage && item(<Trash2 className="w-3.5 h-3.5" />, 'Xóa đợt nháp', onDelete, true)}
             </>
           )}
-          {/* OPEN */}
           {round.status === 'OPEN' && (
             <>
-              {item(<Plus className="w-3.5 h-3.5 text-[#0A6EBD]" />, 'Thêm đề tài', onAddProject)}
-              {item(<Eye className="w-3.5 h-3.5" />, 'Xem hồ sơ', onViewApplications)}
-              {canManage && item(<CalendarClock className="w-3.5 h-3.5 text-amber-600" />, 'Gia hạn', onExtend)}
+              {item(<Plus className="w-3.5 h-3.5 text-[#0A6EBD]" />, 'Đăng ký đề tài', onAddProject)}
+              {item(<Eye className="w-3.5 h-3.5" />, 'Xem danh sách hồ sơ', onViewApplications)}
+              {canManage && item(<CalendarClock className="w-3.5 h-3.5 text-amber-600" />, 'Gia hạn đợt', onExtend)}
               {canManage && (
                 <>
                   <div className="border-t border-slate-100 my-1" />
@@ -172,12 +162,11 @@ function RoundActionMenu({
               )}
             </>
           )}
-          {/* CLOSED */}
           {round.status === 'CLOSED' && (
             <>
               {item(<Eye className="w-3.5 h-3.5" />, 'Xem chi tiết', onView)}
-              {item(<FileText className="w-3.5 h-3.5" />, 'Xem hồ sơ', onViewApplications)}
-              {item(<Download className="w-3.5 h-3.5" />, 'Xuất danh sách', onExport)}
+              {item(<FileText className="w-3.5 h-3.5" />, 'Xem hồ sơ đã nộp', onViewApplications)}
+              {item(<Download className="w-3.5 h-3.5" />, 'Xuất danh sách Excel', onExport)}
             </>
           )}
         </div>
@@ -186,8 +175,8 @@ function RoundActionMenu({
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   ROUND DETAIL PAGE
+/* ─────────────────────────────────────────────────────────────────
+   ROUND DETAIL VIEW (Sub-tabs)
    ───────────────────────────────────────────────────────────────── */
 interface RoundDetailViewProps {
   round: RegistrationRound;
@@ -212,7 +201,6 @@ function RoundDetailView({
   onExtend,
   onEdit,
   onOpen,
-  onDelete,
   onExport,
   canManage,
 }: RoundDetailViewProps) {
@@ -225,11 +213,10 @@ function RoundDetailView({
   const TABS: { id: 'OVERVIEW' | 'APPLICATIONS' | 'TEMPLATES' | 'HISTORY'; label: string; count?: number }[] = [
     { id: 'OVERVIEW', label: 'Tổng quan' },
     { id: 'APPLICATIONS', label: 'Hồ sơ đăng ký', count: projects.length },
-    { id: 'TEMPLATES', label: 'Biểu mẫu' },
+    { id: 'TEMPLATES', label: 'Biểu mẫu đính kèm' },
     { id: 'HISTORY', label: 'Lịch sử xử lý' },
   ];
 
-  // Filter templates from updated templates-data
   const templatesList = useMemo(() => {
     return MEDICAL_TEMPLATES_DATA.filter((t) => ['PROPOSAL', 'COUNCIL'].includes(t.category));
   }, []);
@@ -271,36 +258,16 @@ function RoundDetailView({
     ];
   }, [round]);
 
-  const stats = useMemo(() => {
-    const submitted = projects.filter((p) => !['DRAFT'].includes(p.proposalStatus || p.status));
-    const drafts = projects.filter((p) => p.status === 'DRAFT');
-    const needRevision = projects.filter((p) => p.proposalStatus === 'REVISION_REQUIRED');
-    const valid = projects.filter((p) => p.proposalStatus === 'VALID' || (p.status as any) === 'APPROVED');
-    const transferred = projects.filter((p) =>
-      ['UNDER_REVIEW', 'APPROVED', 'IN_PROGRESS', 'ACCEPTED', 'RECOGNIZED'].includes(p.status)
-    );
-    return {
-      total: projects.length,
-      drafts: drafts.length,
-      submitted: submitted.length,
-      needRevision: needRevision.length,
-      valid: valid.length,
-      transferred: transferred.length,
-    };
-  }, [projects]);
-
   return (
-    <div className="space-y-4 text-slate-800 animate-in fade-in slide-in-from-bottom-2 duration-200">
-      {/* Back to list */}
+    <div className="space-y-4 text-slate-800 animate-in fade-in duration-200">
       <button
         onClick={onBack}
-        className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-[#0A6EBD] transition select-none"
+        className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-[#0A6EBD] transition select-none cursor-pointer"
       >
         <ArrowLeft className="w-3.5 h-3.5" />
-        Danh sách đợt đăng ký
+        Quay lại danh sách đợt
       </button>
 
-      {/* Header card */}
       <header className="bg-white px-5 py-4 rounded-xl border border-slate-200 shadow-2xs flex flex-wrap justify-between items-start gap-4">
         <div className="space-y-1.5 flex-1 min-w-[280px]">
           <div className="flex items-center gap-2 flex-wrap">
@@ -323,19 +290,18 @@ function RoundDetailView({
           </p>
         </div>
 
-        {/* Header Action Menu */}
         <div className="flex items-center gap-2 shrink-0">
           {round.status === 'DRAFT' && canManage && (
             <>
               <button
                 onClick={onEdit}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg hover:bg-slate-50 transition shadow-2xs"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg hover:bg-slate-50 transition shadow-2xs cursor-pointer"
               >
                 <Edit className="w-3.5 h-3.5 text-slate-500" /> Chỉnh sửa
               </button>
               <button
                 onClick={onOpen}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 transition shadow-2xs"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 transition shadow-2xs cursor-pointer"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" /> Mở đợt
               </button>
@@ -345,13 +311,13 @@ function RoundDetailView({
             <>
               <button
                 onClick={onExtend}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold rounded-lg hover:bg-amber-100 transition shadow-2xs"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold rounded-lg hover:bg-amber-100 transition shadow-2xs cursor-pointer"
               >
                 <CalendarClock className="w-3.5 h-3.5" /> Gia hạn đợt
               </button>
               <button
                 onClick={onClose}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-lg hover:bg-rose-100 transition shadow-2xs"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-lg hover:bg-rose-100 transition shadow-2xs cursor-pointer"
               >
                 <Lock className="w-3.5 h-3.5" /> Đóng đợt
               </button>
@@ -360,9 +326,9 @@ function RoundDetailView({
           {round.status === 'CLOSED' && (
             <button
               onClick={onExport}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 border border-sky-200 text-[#0A6EBD] text-xs font-bold rounded-lg hover:bg-sky-100 transition shadow-2xs"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 border border-sky-200 text-[#0A6EBD] text-xs font-bold rounded-lg hover:bg-sky-100 transition shadow-2xs cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" /> Xuất danh sách
+              <Download className="w-3.5 h-3.5" /> Xuất danh sách Excel
             </button>
           )}
         </div>
@@ -375,7 +341,7 @@ function RoundDetailView({
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
-              className={`px-4 py-3 border-b-2 transition whitespace-nowrap flex items-center gap-1.5 ${
+              className={`px-4 py-3 border-b-2 transition whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                 activeTab === t.id
                   ? 'border-[#0A6EBD] text-[#0A6EBD] bg-white'
                   : 'border-transparent hover:text-slate-800'
@@ -396,13 +362,11 @@ function RoundDetailView({
         </div>
 
         <div className="p-5">
-          {/* ── TAB 1: TỔNG QUAN ── */}
           {activeTab === 'OVERVIEW' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Left Column: Info */}
               <div className="space-y-4 text-sm">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-2 select-none">
-                  Thông tin đợt đăng ký
+                  Thông tin cấu hình đợt
                 </h3>
                 <div className="space-y-3">
                   {[
@@ -411,238 +375,136 @@ function RoundDetailView({
                     { label: 'Ngày kết thúc', value: formatDisplayDate(round.endDate) },
                     {
                       label: 'Hạn bổ sung đề cương',
-                      value: round.deadlineForAmendment
-                        ? formatDisplayDate(round.deadlineForAmendment)
-                        : 'Không cấu hình',
+                      value: round.deadlineForAmendment ? formatDisplayDate(round.deadlineForAmendment) : 'Không cấu hình',
                     },
                     { label: 'Đối tượng đăng ký', value: round.targetAudience },
                     {
                       label: 'Lĩnh vực ưu tiên',
                       value: round.priorityFields ? round.priorityFields.join(', ') : 'Tất cả lĩnh vực y sinh',
                     },
-                    ...(round.maxBudget
-                      ? [{ label: 'Giới hạn kinh phí tối đa', value: formatVND(round.maxBudget) + ' / đề tài' }]
-                      : []),
+                    ...(round.maxBudget ? [{ label: 'Kinh phí tối đa / đề tài', value: formatVND(round.maxBudget) }] : []),
                   ].map((row) => (
                     <div key={row.label} className="flex items-start justify-between gap-4 py-1.5 border-b border-slate-50">
-                      <span className="text-slate-500 font-semibold whitespace-nowrap">{row.label}</span>
-                      <span className="font-bold text-slate-800 text-right">{row.value}</span>
+                      <span className="text-slate-500 font-semibold whitespace-nowrap text-xs">{row.label}</span>
+                      <span className="font-bold text-slate-800 text-right text-xs">{row.value}</span>
                     </div>
                   ))}
                 </div>
-                {round.description && (
-                  <div className="pt-2">
-                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 select-none">
-                      Hướng dẫn nộp hồ sơ
-                    </h4>
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-slate-700 leading-relaxed font-semibold">
-                      {round.description}
-                    </div>
-                  </div>
-                )}
               </div>
 
-              {/* Right Column: Statistics */}
               <div className="space-y-4">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-2 select-none">
                   Thống kê hồ sơ đăng ký
                 </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[
-                    { label: 'Tổng số hồ sơ', value: stats.total, color: 'text-slate-900', bg: 'bg-slate-50 border-slate-200' },
-                    { label: 'Hồ sơ bản nháp', value: stats.drafts, color: 'text-slate-500', bg: 'bg-slate-50 border-slate-200' },
-                    { label: 'Đã nộp hành chính', value: stats.submitted, color: 'text-[#0A6EBD]', bg: 'bg-sky-50 border-sky-200' },
-                    { label: 'Yêu cầu sửa đổi', value: stats.needRevision, color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' },
-                    { label: 'Đủ điều kiện hợp lệ', value: stats.valid, color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
-                    { label: 'Đã chuyển Hội đồng', value: stats.transferred, color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-200' },
-                  ].map((stat) => (
-                    <div key={stat.label} className={`p-4 rounded-xl border flex flex-col justify-between gap-1.5 ${stat.bg}`}>
-                      <span className="text-xs font-bold text-slate-500 select-none">{stat.label}</span>
-                      <span className={`text-2xl font-bold font-mono ${stat.color}`}>{stat.value}</span>
-                    </div>
-                  ))}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-4 rounded-xl border bg-slate-50 border-slate-200">
+                    <span className="text-xs font-bold text-slate-500 block">Tổng số hồ sơ</span>
+                    <span className="text-2xl font-bold font-mono text-slate-900 mt-1 block">{projects.length}</span>
+                  </div>
+                  <div className="p-4 rounded-xl border bg-sky-50 border-sky-200">
+                    <span className="text-xs font-bold text-slate-500 block">Đã nộp chính thức</span>
+                    <span className="text-2xl font-bold font-mono text-[#0A6EBD] mt-1 block">
+                      {projects.filter((p) => p.status !== 'DRAFT').length}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ── TAB 2: HỒ SƠ ĐĂNG KÝ ── */}
           {activeTab === 'APPLICATIONS' && (
             <div className="space-y-3">
               {projects.length === 0 ? (
-                <div className="text-center py-14 text-slate-400 select-none">
+                <div className="text-center py-12 text-slate-400">
                   <FileText className="w-10 h-10 mx-auto mb-2 opacity-20" />
-                  <p className="text-sm font-semibold">Chưa có hồ sơ đăng ký nào trong đợt này</p>
+                  <p className="text-xs font-semibold">Chưa có hồ sơ đăng ký nào trong đợt này</p>
                 </div>
               ) : (
-                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-sm">
-                      <thead className="bg-[#F8FAFC] border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-500 select-none">
-                        <tr>
-                          <th className="px-4 py-3.5 w-28 whitespace-nowrap">Mã hồ sơ</th>
-                          <th className="px-4 py-3.5 min-w-[280px]">Tên đề tài</th>
-                          <th className="px-4 py-3.5 w-40">Chủ nhiệm đề tài</th>
-                          <th className="px-4 py-3.5 w-40">Khoa/Phòng</th>
-                          <th className="px-4 py-3.5 w-28 text-center whitespace-nowrap">Ngày nộp</th>
-                          <th className="px-4 py-3.5 w-32">Trạng thái</th>
-                          <th className="px-4 py-3.5 w-48">Công việc tiếp theo</th>
-                          <th className="px-4 py-3.5 w-20 text-center">Thao tác</th>
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 font-bold uppercase text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3 w-32">Mã đề tài</th>
+                        <th className="px-4 py-3 min-w-[280px]">Tên đề tài</th>
+                        <th className="px-4 py-3 w-40">Chủ nhiệm</th>
+                        <th className="px-4 py-3 w-32">Trạng thái</th>
+                        <th className="px-4 py-3 w-16 text-center">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                      {projects.map((p) => (
+                        <tr key={p.id} className="hover:bg-slate-50/50 transition">
+                          <td className="px-4 py-3 font-mono font-bold text-[#0A6EBD]">
+                            {p.projectCode || p.proposalCode || 'BẢN NHÁP'}
+                          </td>
+                          <td className="px-4 py-3 font-bold text-slate-900">{p.title}</td>
+                          <td className="px-4 py-3 text-slate-700">{p.principalInvestigatorName}</td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0A6EBD] border border-sky-100">
+                              {p.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <Link href={`/projects/${p.id}`} className="text-[#0A6EBD] hover:underline font-bold">
+                              Xem
+                            </Link>
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                        {projects.map((p) => (
-                          <tr key={p.id} className="hover:bg-slate-50/50 transition">
-                            <td className="px-4 py-3">
-                              <Link
-                                href={`/projects/${p.id}`}
-                                className="font-mono font-bold text-xs text-[#0A6EBD] hover:underline"
-                              >
-                                {p.projectCode || p.proposalCode || 'BẢN NHÁP'}
-                              </Link>
-                            </td>
-                            <td className="px-4 py-3">
-                              <Link
-                                href={`/projects/${p.id}`}
-                                className="font-bold text-slate-900 hover:text-[#0A6EBD] transition line-clamp-2 leading-snug"
-                              >
-                                {p.title}
-                              </Link>
-                            </td>
-                            <td className="px-4 py-3 text-slate-700 text-xs">{p.principalInvestigatorName}</td>
-                            <td className="px-4 py-3 text-slate-500 text-xs">{p.departmentName}</td>
-                            <td className="px-4 py-3 text-center font-mono text-xs text-slate-500">
-                              {p.submittedAt ? formatDisplayDate(p.submittedAt) : '–'}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border whitespace-nowrap ${
-                                  p.status === 'IN_PROGRESS'
-                                    ? 'bg-sky-50 text-sky-700 border-sky-200'
-                                    : (p.status as any) === 'APPROVED'
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                    : p.status === 'DRAFT'
-                                    ? 'bg-slate-50 text-slate-600 border-slate-200'
-                                    : 'bg-amber-50 text-amber-700 border-amber-200'
-                                }`}
-                              >
-                                {p.status === 'DRAFT'
-                                  ? 'Bản nháp'
-                                  : (p.status as any) === 'UNDER_REVIEW'
-                                  ? 'Đang xét duyệt'
-                                  : (p.status as any) === 'APPROVED'
-                                  ? 'Đã duyệt'
-                                  : p.status === 'IN_PROGRESS'
-                                  ? 'Đang thực hiện'
-                                  : p.status}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-xs text-slate-500 font-semibold leading-relaxed">
-                              {p.status === 'DRAFT' ? (
-                                'Chờ nộp hồ sơ đăng ký'
-                              ) : p.proposalStatus === 'REVISION_REQUIRED' ? (
-                                <span className="text-amber-700 flex items-center gap-1">
-                                  <AlertCircle className="w-3.5 h-3.5 shrink-0 animate-bounce" />
-                                  Chờ sửa đổi thuyết minh (BM7)
-                                </span>
-                              ) : (p.status as any) === 'UNDER_REVIEW' ? (
-                                'Chờ thẩm định cấp Viện'
-                              ) : (
-                                '–'
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <Link
-                                href={`/projects/${p.id}`}
-                                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-[#0A6EBD] transition inline-flex"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </Link>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
           )}
 
-          {/* ── TAB 3: BIỂU MẪU ── */}
           {activeTab === 'TEMPLATES' && (
             <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-              <table className="w-full text-left border-collapse text-sm">
-                <thead className="bg-[#F8FAFC] border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-500 select-none">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead className="bg-[#F8FAFC] border-b border-slate-200 font-bold uppercase text-slate-500 select-none">
                   <tr>
-                    <th className="px-4 py-3.5">Tên biểu mẫu</th>
-                    <th className="px-4 py-3.5 w-32 text-center">Loại tài liệu</th>
-                    <th className="px-4 py-3.5 w-24 text-center">Phiên bản</th>
-                    <th className="px-4 py-3.5 w-32 text-center">Ngày hiệu lực</th>
-                    <th className="px-4 py-3.5 w-24 text-right">Tải về</th>
+                    <th className="px-4 py-3">Tên biểu mẫu</th>
+                    <th className="px-4 py-3 w-32 text-center">Loại tài liệu</th>
+                    <th className="px-4 py-3 w-24 text-center">Phiên bản</th>
+                    <th className="px-4 py-3 w-24 text-right">Tải về</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                  {templatesList.map((t) => {
-                    const isRequired = t.category === 'PROPOSAL';
-                    return (
-                      <tr key={t.id} className="hover:bg-slate-50/50 transition">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2.5">
-                            <FileText className="w-4 h-4 text-slate-400 shrink-0" />
-                            <div>
-                              <span className="font-mono text-xs bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded text-slate-500 font-bold mr-2">
-                                {t.code}
-                              </span>
-                              <span className="font-bold text-slate-800">{t.name}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
-                              isRequired
-                                ? 'bg-rose-50 text-rose-700 border-rose-200'
-                                : 'bg-slate-100 text-slate-500 border-slate-200'
-                            }`}
-                          >
-                            {isRequired ? 'Bắt buộc' : 'Nội bộ'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-center font-mono text-[#0A6EBD] font-bold">{t.templateVersion}</td>
-                        <td className="px-4 py-3 text-center text-slate-500 font-mono text-xs">{t.updatedAt}</td>
-                        <td className="px-4 py-3 text-right">
-                          <button className="text-[#0A6EBD] hover:text-[#085896] hover:underline inline-flex items-center gap-1 font-bold">
-                            <Download className="w-3.5 h-3.5" /> Tải về
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {templatesList.map((t) => (
+                    <tr key={t.id} className="hover:bg-slate-50/50 transition">
+                      <td className="px-4 py-3 font-bold text-slate-800">{t.name}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-600 font-bold border">
+                          {t.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center font-mono font-bold text-[#0A6EBD]">{t.templateVersion}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button className="text-[#0A6EBD] hover:underline font-bold cursor-pointer inline-flex items-center gap-1">
+                          <Download className="w-3.5 h-3.5" /> Tải về
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
           )}
 
-          {/* ── TAB 4: LỊCH SỬ XỬ LÝ ── */}
           {activeTab === 'HISTORY' && (
-            <div className="space-y-3.5 max-w-2xl">
+            <div className="space-y-3 max-w-2xl">
               {historyList.map((h, idx) => (
-                <div key={idx} className="flex items-start gap-4">
-                  <div className="w-7 h-7 flex items-center justify-center rounded-full bg-sky-50 text-[#0A6EBD] font-bold border border-sky-100 shrink-0 text-xs">
+                <div key={idx} className="flex items-start gap-3 bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs">
+                  <div className="w-6 h-6 rounded-full bg-sky-100 text-[#0A6EBD] font-bold flex items-center justify-center shrink-0">
                     {idx + 1}
                   </div>
-                  <div className="flex-1 bg-slate-50 border border-slate-150/60 rounded-xl p-4 space-y-1.5 shadow-2xs">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-bold text-slate-800 text-sm">{h.action}</span>
-                      <span className="font-mono text-xs text-slate-400 whitespace-nowrap">{h.timestamp}</span>
+                  <div className="flex-1 space-y-1">
+                    <div className="flex justify-between font-bold text-slate-800">
+                      <span>{h.action}</span>
+                      <span className="font-mono text-slate-400 font-medium">{h.timestamp}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-xs font-semibold">
-                      <span className="text-slate-500">Người thực hiện: <strong className="text-slate-700">{h.user}</strong></span>
-                      <span className="text-slate-300">·</span>
-                      <span className="text-slate-400">Trạng thái: {h.oldStatus} → {h.newStatus}</span>
-                    </div>
-                    {h.notes && <p className="text-xs text-slate-500 italic font-semibold">{h.notes}</p>}
+                    <p className="text-slate-500 font-medium">Thực hiện bởi: {h.user}</p>
+                    {h.notes && <p className="text-slate-400 italic">{h.notes}</p>}
                   </div>
                 </div>
               ))}
@@ -659,29 +521,26 @@ function RoundDetailView({
    ───────────────────────────────────────────────────────────────── */
 export default function RegistrationRoundsPage() {
   const router = useRouter();
-  const { currentUser, switchRole } = useAuth();
+  const { currentUser } = useAuth();
   const { success, warning, error, confirm } = useToast();
   const [rounds, setRounds] = useState<RegistrationRound[]>(repo.getRounds());
 
-  // Navigation and dynamic tabs inside detail view
   const [detailId, setDetailId] = useState<string | null>(null);
   const [detailTab, setDetailTab] = useState<'OVERVIEW' | 'APPLICATIONS' | 'TEMPLATES' | 'HISTORY'>('OVERVIEW');
 
-  // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editRound, setEditRound] = useState<RegistrationRound | null>(null);
   const [showExtendModal, setShowExtendModal] = useState<RegistrationRound | null>(null);
 
-  // Filter and search states
   type TabFilter = 'ALL' | 'OPEN' | 'UPCOMING' | 'CLOSED';
   const [activeTab, setActiveTab] = useState<TabFilter>('ALL');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [filterYear, setFilterYear] = useState<string>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(15);
+  const [pageSize, setPageSize] = useState(10);
 
-  // Form states
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const [formCode, setFormCode] = useState('');
   const [formName, setFormName] = useState('');
   const [formStartDate, setFormStartDate] = useState(today);
   const [formEndDate, setFormEndDate] = useState(today);
@@ -690,8 +549,6 @@ export default function RegistrationRoundsPage() {
   const [formPriorityFields, setFormPriorityFields] = useState('');
   const [formMaxBudget, setFormMaxBudget] = useState('150000000');
   const [formDescription, setFormDescription] = useState('');
-
-  // Extend form date
   const [extendDate, setExtendDate] = useState('');
 
   const canManage = useMemo(() => {
@@ -702,9 +559,9 @@ export default function RegistrationRoundsPage() {
     return Array.from(new Set(rounds.map((r) => r.year))).sort((a, b) => b - a);
   }, [rounds]);
 
-  // Sync edit round states
   useEffect(() => {
     if (editRound) {
+      setFormCode(editRound.code);
       setFormName(editRound.name);
       setFormStartDate(editRound.startDate);
       setFormEndDate(editRound.endDate);
@@ -743,22 +600,9 @@ export default function RegistrationRoundsPage() {
     return filteredRounds.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   }, [filteredRounds, currentPage, pageSize]);
 
-  // Find currently open round
   const openRound = useMemo(() => {
     return rounds.find((r) => r.status === 'OPEN');
   }, [rounds]);
-
-  // Calculate projects and statistics for the open round
-  const openRoundStats = useMemo(() => {
-    if (!openRound) return null;
-    const openProjects = repo.getProjects().filter((p) => p.registrationRoundId === openRound.id);
-    const submitted = openProjects.filter((p) => !['DRAFT'].includes(p.proposalStatus || p.status)).length;
-    const needRevision = openProjects.filter((p) => p.proposalStatus === 'REVISION_REQUIRED').length;
-    return {
-      submitted,
-      needRevision,
-    };
-  }, [openRound]);
 
   /* ── Event Handlers ── */
   const handleToggleClose = (round: RegistrationRound) => {
@@ -800,18 +644,17 @@ export default function RegistrationRoundsPage() {
   const handleDelete = (round: RegistrationRound) => {
     const projects = repo.getProjects().filter((p) => p.registrationRoundId === round.id);
     if (projects.length > 0) {
-      warning(`Không thể xóa đợt này. Đã phát sinh ${projects.length} hồ sơ đã nộp.`);
+      warning(`Không thể xóa đợt này. Đã phát sinh ${projects.length} hồ sơ đăng ký trong đợt.`);
       return;
     }
     confirm({
-      title: 'Xác nhận xóa đợt đăng ký',
-      message: `Xóa vĩnh viễn đợt đăng ký "${round.name}" ra khỏi hệ thống? Thao tác này không thể hoàn tác.`,
+      title: 'Xác nhận xóa đợt nháp',
+      message: `Xóa vĩnh viễn đợt đăng ký nháp "${round.name}"? Thao tác này không thể hoàn tác.`,
       confirmLabel: 'Xóa vĩnh viễn',
       type: 'danger',
       onConfirm: () => {
-        const updated = repo.updateRound(round.id, { status: 'CLOSED' }); // or simulated local filter out
         setRounds((prev) => prev.filter((r) => r.id !== round.id));
-        success(`Đã xóa thành công đợt đăng ký ${round.code}.`);
+        success(`Đã xóa thành công đợt đăng ký nháp ${round.code}.`);
       },
     });
   };
@@ -831,16 +674,18 @@ export default function RegistrationRoundsPage() {
   };
 
   const handleExport = (round: RegistrationRound) => {
-    success(`Đang xuất bảng dữ liệu danh sách hồ sơ đợt ${round.code} dạng Excel...`);
+    success(`Đang xuất danh sách hồ sơ đợt ${round.code} dạng file Excel...`);
   };
 
   const openCreateModal = () => {
+    const yr = new Date().getFullYear();
+    setFormCode(`DOT-${yr}-01`);
     setFormName('');
     setFormStartDate(today);
     setFormEndDate(today);
     setFormDeadlineForAmendment('');
-    setFormTargetAudience('Toàn thể Bác sĩ, Dược sĩ, Điều dưỡng và Cán bộ y tế bệnh viện');
-    setFormPriorityFields('Nhi khoa, Sản khoa, Y học lâm sàng trẻ em, Dịch tễ học nhi khoa');
+    setFormTargetAudience('Toàn thể Bác sĩ, Dược sĩ và Cán bộ y tế Bệnh viện');
+    setFormPriorityFields('Y học lâm sàng, Nhi khoa, Dịch tễ học');
     setFormMaxBudget('150000000');
     setFormDescription('');
     setShowCreateModal(true);
@@ -853,21 +698,18 @@ export default function RegistrationRoundsPage() {
       return;
     }
     if (!formStartDate || !formEndDate) {
-      warning('Vui lòng nhập đầy đủ thời gian bắt đầu và kết thúc.');
+      warning('Vui lòng nhập thời gian bắt đầu và kết thúc.');
       return;
     }
     if (new Date(formEndDate) <= new Date(formStartDate)) {
-      warning('Ngày kết thúc tiếp nhận phải lớn hơn ngày bắt đầu.');
+      warning('Ngày kết thúc phải lớn hơn ngày bắt đầu.');
       return;
     }
 
     const yr = new Date(formEndDate).getFullYear();
-    const mo = String(new Date(formEndDate).getMonth() + 1).padStart(2, '0');
-    const autoCode = `DOT-${yr}-${mo}`;
-
     const newRound: RegistrationRound = {
       id: `round-${Date.now()}`,
-      code: autoCode,
+      code: formCode.trim() || `DOT-${yr}-01`,
       name: formName.trim(),
       year: yr,
       startDate: formStartDate,
@@ -875,13 +717,10 @@ export default function RegistrationRoundsPage() {
       deadlineForAmendment: formDeadlineForAmendment || undefined,
       targetAudience: formTargetAudience.trim(),
       priorityFields: formPriorityFields
-        ? formPriorityFields
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
+        ? formPriorityFields.split(',').map((s) => s.trim()).filter(Boolean)
         : undefined,
       maxBudget: Number(formMaxBudget) || 150000000,
-      status: 'OPEN', // Auto open
+      status: 'OPEN',
       description: formDescription.trim(),
       totalSubmissions: 0,
     };
@@ -894,21 +733,11 @@ export default function RegistrationRoundsPage() {
 
   const handleUpdateRound = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editRound || !formName.trim()) {
-      warning('Vui lòng nhập tên đợt đăng ký.');
-      return;
-    }
-    if (!formStartDate || !formEndDate) {
-      warning('Vui lòng chọn ngày bắt đầu và kết thúc.');
-      return;
-    }
-    if (new Date(formEndDate) <= new Date(formStartDate)) {
-      warning('Ngày kết thúc tiếp nhận phải lớn hơn ngày bắt đầu.');
-      return;
-    }
+    if (!editRound || !formName.trim()) return;
 
     const yr = new Date(formEndDate).getFullYear();
     const updated = repo.updateRound(editRound.id, {
+      code: formCode.trim(),
       name: formName.trim(),
       year: yr,
       startDate: formStartDate,
@@ -916,10 +745,7 @@ export default function RegistrationRoundsPage() {
       deadlineForAmendment: formDeadlineForAmendment || undefined,
       targetAudience: formTargetAudience.trim(),
       priorityFields: formPriorityFields
-        ? formPriorityFields
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
+        ? formPriorityFields.split(',').map((s) => s.trim()).filter(Boolean)
         : undefined,
       maxBudget: Number(formMaxBudget) || 150000000,
       description: formDescription.trim(),
@@ -927,7 +753,7 @@ export default function RegistrationRoundsPage() {
 
     if (updated) {
       setRounds(repo.getRounds());
-      success(`Đã cập nhật thông tin đợt đăng ký ${editRound.code} thành công!`);
+      success(`Cập nhật thông tin đợt ${editRound.code} thành công!`);
     } else {
       error('Lỗi khi cập nhật đợt đăng ký.');
     }
@@ -938,7 +764,6 @@ export default function RegistrationRoundsPage() {
     return detailId ? rounds.find((r) => r.id === detailId) : null;
   }, [detailId, rounds]);
 
-  // Render detail view if selected
   if (detailRound) {
     return (
       <RoundDetailView
@@ -962,27 +787,19 @@ export default function RegistrationRoundsPage() {
 
   return (
     <div className="space-y-4 text-slate-800 animate-in fade-in duration-200">
-      {/* ── PAGE HEADER ── */}
+      {/* ── HEADER ── */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-base font-bold text-slate-900 leading-tight">Đợt đăng ký đề tài</h1>
-          <p className="text-xs text-slate-500 mt-1 font-semibold leading-relaxed">
+          <p className="text-xs text-slate-500 mt-1 font-semibold">
             Quản lý thời gian tiếp nhận và hồ sơ đăng ký đề tài NCKH cấp cơ sở
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {!canManage && (
-            <button
-              onClick={() => switchRole('RESEARCH_OFFICE')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 border border-sky-200 text-[#0A6EBD] text-xs font-bold rounded-lg hover:bg-sky-100 transition shadow-2xs"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" /> Quản trị đợt
-            </button>
-          )}
           {canManage && (
             <button
               onClick={openCreateModal}
-              className="inline-flex items-center gap-1.5 bg-[#0A6EBD] hover:bg-[#085896] text-white font-bold px-4 py-2 rounded-lg text-xs shadow-sm transition"
+              className="inline-flex items-center gap-1.5 bg-[#0A6EBD] hover:bg-[#085896] text-white font-bold px-4 py-2 rounded-lg text-xs shadow-xs transition cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" /> Tạo đợt đăng ký
             </button>
@@ -990,104 +807,61 @@ export default function RegistrationRoundsPage() {
         </div>
       </div>
 
-      {/* ── ACTIVE ROUND HIGHLIGHT (ONE COMPACT OPEN ROUND) ── */}
-      {openRound && openRoundStats && (
-        <section
-          aria-labelledby="active-round-title"
-          className="bg-gradient-to-r from-emerald-50/70 to-sky-50/70 border border-emerald-200/80 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs select-none"
-        >
+      {/* ── đợt đang mở highlight ── */}
+      {openRound && (
+        <section className="bg-gradient-to-r from-emerald-50/70 to-sky-50/70 border border-emerald-200/80 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs select-none">
           <div className="flex items-start gap-3 flex-1 min-w-[280px]">
             <div className="w-9 h-9 rounded-xl bg-emerald-100/80 border border-emerald-200 flex items-center justify-center shrink-0">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
             </div>
             <div className="space-y-1">
-              <span
-                id="active-round-title"
-                className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block"
-              >
+              <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">
                 Đợt đang tiếp nhận
               </span>
               <h2 className="text-sm font-bold text-slate-900 leading-snug">{openRound.name}</h2>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-semibold mt-0.5">
-                <span className="flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                  {formatDisplayDate(openRound.startDate)} – {formatDisplayDate(openRound.endDate)}
+              <p className="text-xs text-slate-500 font-semibold flex items-center gap-2">
+                <span>
+                  Thời gian: {formatDisplayDate(openRound.startDate)} – {formatDisplayDate(openRound.endDate)}
                 </span>
-                <span className="text-slate-300">·</span>
+                <span>•</span>
                 <span className="text-amber-700 font-bold">Còn {daysRemaining(openRound.endDate)} ngày</span>
-                <span className="text-slate-300">·</span>
-                <span className="text-[#0A6EBD] font-bold">{openRoundStats.submitted} hồ sơ đã nộp</span>
-                {openRoundStats.needRevision > 0 && (
-                  <>
-                    <span className="text-slate-300">·</span>
-                    <span className="text-amber-700 font-bold">{openRoundStats.needRevision} yêu cầu chỉnh sửa</span>
-                  </>
-                )}
-              </div>
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={() => {
-                setDetailId(openRound.id);
-                setDetailTab('APPLICATIONS');
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg hover:bg-slate-50 transition shadow-2xs"
+              onClick={() => router.push(`/projects/register?roundId=${openRound.id}`)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#0A6EBD] text-white hover:bg-[#085896] font-bold text-xs rounded-lg transition shadow-xs cursor-pointer"
             >
-              <Eye className="w-3.5 h-3.5 text-slate-400" /> Xem hồ sơ
+              <Plus className="w-3.5 h-3.5" /> Đăng ký đề tài đợt này
             </button>
-            {canManage && (
-              <>
-                <button
-                  onClick={() => {
-                    setShowExtendModal(openRound);
-                    setExtendDate(openRound.endDate);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold rounded-lg hover:bg-amber-100 transition shadow-2xs"
-                >
-                  <CalendarClock className="w-3.5 h-3.5" /> Gia hạn
-                </button>
-                <button
-                  onClick={() => handleToggleClose(openRound)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-lg hover:bg-rose-100 transition shadow-2xs"
-                >
-                  <Lock className="w-3.5 h-3.5" /> Đóng
-                </button>
-              </>
-            )}
           </div>
         </section>
       )}
 
       {/* ── STATUS TABS ── */}
       <div className="flex items-center gap-1 border-b border-slate-200 select-none">
-        {(
-          [
-            { id: 'ALL', label: 'Tất cả' },
-            { id: 'OPEN', label: 'Đang mở' },
-            { id: 'UPCOMING', label: 'Sắp mở' },
-            { id: 'CLOSED', label: 'Đã đóng' },
-          ] as const
-        ).map((t) => (
+        {[
+          { id: 'ALL', label: 'Tất cả' },
+          { id: 'OPEN', label: 'Đang mở' },
+          { id: 'UPCOMING', label: 'Sắp mở' },
+          { id: 'CLOSED', label: 'Đã đóng' },
+        ].map((t) => (
           <button
             key={t.id}
             onClick={() => {
-              setActiveTab(t.id);
+              setActiveTab(t.id as any);
               setCurrentPage(1);
             }}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold border-b-2 transition whitespace-nowrap -mb-px ${
-              activeTab === t.id
-                ? 'border-[#0A6EBD] text-[#0A6EBD]'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold border-b-2 transition whitespace-nowrap -mb-px cursor-pointer ${
+              activeTab === t.id ? 'border-[#0A6EBD] text-[#0A6EBD]' : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <span>{t.label}</span>
-            <span
-              className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                activeTab === t.id ? 'bg-[#0A6EBD] text-white' : 'bg-slate-100 text-slate-500'
-              }`}
-            >
-              {tabCounts[t.id]}
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+              activeTab === t.id ? 'bg-[#0A6EBD] text-white' : 'bg-slate-100 text-slate-500'
+            }`}>
+              {tabCounts[t.id as keyof typeof tabCounts]}
             </span>
           </button>
         ))}
@@ -1096,7 +870,6 @@ export default function RegistrationRoundsPage() {
       {/* ── FILTER BAR ── */}
       <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs flex flex-wrap items-center justify-between gap-3 select-none">
         <div className="flex flex-wrap items-center gap-2 flex-1">
-          {/* Search by Round name/code */}
           <div className="relative w-full max-w-xs">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -1107,36 +880,26 @@ export default function RegistrationRoundsPage() {
                 setSearchKeyword(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full pl-8 pr-8 py-1.5 rounded-lg border border-slate-200 focus:border-[#0A6EBD] focus:ring-1 focus:ring-[#0A6EBD] text-xs font-medium outline-none bg-white transition"
+              className="w-full pl-8 pr-8 py-1.5 rounded-lg border border-slate-200 text-xs font-medium outline-none bg-white focus:border-[#0A6EBD]"
             />
             {searchKeyword && (
-              <button
-                onClick={() => setSearchKeyword('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
+              <button onClick={() => setSearchKeyword('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
                 <X className="w-3 h-3" />
               </button>
             )}
           </div>
 
-          {/* Filter by Year */}
           <select
             value={filterYear}
             onChange={(e) => {
               setFilterYear(e.target.value);
               setCurrentPage(1);
             }}
-            className={`py-1.5 px-3 rounded-lg border text-xs font-semibold outline-none transition cursor-pointer ${
-              filterYear !== 'ALL'
-                ? 'border-[#0A6EBD] text-[#0A6EBD] bg-[#EBF4FC]'
-                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-            }`}
+            className="py-1.5 px-3 rounded-lg border text-xs font-semibold outline-none border-slate-200 bg-white text-slate-600 cursor-pointer"
           >
             <option value="ALL">Năm: Tất cả</option>
             {yearOptions.map((y) => (
-              <option key={y} value={y}>
-                Năm {y}
-              </option>
+              <option key={y} value={y}>Năm {y}</option>
             ))}
           </select>
         </div>
@@ -1149,8 +912,8 @@ export default function RegistrationRoundsPage() {
       {/* ── TABLE ── */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-sm">
-            <thead className="bg-[#F8FAFC] border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-500 select-none">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead className="bg-[#F8FAFC] border-b border-slate-200 font-bold uppercase tracking-wider text-slate-500 select-none">
               <tr>
                 <th className="px-5 py-3.5 w-32 whitespace-nowrap">Mã đợt</th>
                 <th className="px-5 py-3.5 min-w-[320px]">Tên đợt đăng ký</th>
@@ -1163,11 +926,8 @@ export default function RegistrationRoundsPage() {
             <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
               {pagedRounds.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-14 text-center select-none">
-                    <div className="flex flex-col items-center gap-2 text-slate-400">
-                      <Calendar className="w-9 h-9 opacity-25" />
-                      <p className="text-sm font-semibold text-slate-500">Không tìm thấy đợt đăng ký nào</p>
-                    </div>
+                  <td colSpan={6} className="px-5 py-12 text-center text-slate-400">
+                    Không tìm thấy đợt đăng ký nào.
                   </td>
                 </tr>
               ) : (
@@ -1176,67 +936,58 @@ export default function RegistrationRoundsPage() {
                   const days = daysRemaining(r.endDate);
                   return (
                     <tr key={r.id} className="hover:bg-slate-50/50 transition">
-                      {/* Mã đợt */}
                       <td className="px-5 py-4 align-middle">
                         <button
                           onClick={() => {
                             setDetailId(r.id);
                             setDetailTab('OVERVIEW');
                           }}
-                          className="font-mono font-bold text-xs text-[#0A6EBD] hover:underline"
+                          className="font-mono font-bold text-xs text-[#0A6EBD] hover:underline cursor-pointer"
                         >
                           {r.code}
                         </button>
-                        <p className="text-[10px] text-slate-400 font-bold mt-0.5 select-none">{r.year}</p>
                       </td>
 
-                      {/* Tên đợt đăng ký */}
                       <td className="px-5 py-4 align-middle">
                         <button
                           onClick={() => {
                             setDetailId(r.id);
                             setDetailTab('OVERVIEW');
                           }}
-                          className="font-bold text-slate-900 hover:text-[#0A6EBD] transition text-left leading-snug line-clamp-2"
+                          className="font-bold text-slate-900 hover:text-[#0A6EBD] transition text-left leading-snug cursor-pointer"
                         >
                           {r.name}
                         </button>
                       </td>
 
-                      {/* Thời gian tiếp nhận */}
                       <td className="px-5 py-4 align-middle whitespace-nowrap">
                         <p className="text-xs font-semibold text-slate-700">
                           {formatDisplayDate(r.startDate)} – {formatDisplayDate(r.endDate)}
                         </p>
                         {r.status === 'OPEN' && (
-                          <p className={`text-[10px] font-bold mt-0.5 select-none ${
-                            days >= 0 ? 'text-amber-700' : 'text-rose-500'
-                          }`}>
+                          <p className={`text-[10px] font-bold mt-0.5 ${days >= 0 ? 'text-amber-700' : 'text-rose-500'}`}>
                             {days >= 0 ? `Còn ${days} ngày` : 'Đã quá hạn'}
                           </p>
                         )}
                       </td>
 
-                      {/* Hồ sơ (Clickable) */}
                       <td className="px-5 py-4 align-middle text-center">
                         <button
                           onClick={() => {
                             setDetailId(r.id);
                             setDetailTab('APPLICATIONS');
                           }}
-                          className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0A6EBD] hover:underline bg-[#EBF4FC]/70 hover:bg-[#EBF4FC] px-2.5 py-1 rounded-full border border-sky-100 transition"
+                          className="inline-flex items-center gap-1 text-xs font-bold text-[#0A6EBD] hover:underline bg-sky-50 px-2.5 py-1 rounded-full border border-sky-100 cursor-pointer"
                         >
                           <Users className="w-3.5 h-3.5" />
                           <span>{projectsCount} hồ sơ</span>
                         </button>
                       </td>
 
-                      {/* Trạng thái */}
                       <td className="px-5 py-4 align-middle">
                         <StatusBadge status={r.status} />
                       </td>
 
-                      {/* Thao tác */}
                       <td className="px-5 py-4 align-middle text-center">
                         <RoundActionMenu
                           round={r}
@@ -1258,7 +1009,7 @@ export default function RegistrationRoundsPage() {
                           onClose={() => handleToggleClose(r)}
                           onDelete={() => handleDelete(r)}
                           onExport={() => handleExport(r)}
-                          onAddProject={() => router.push(`/projects/register?round=${r.id}`)}
+                          onAddProject={() => router.push(`/projects/register?roundId=${r.id}`)}
                         />
                       </td>
                     </tr>
@@ -1283,130 +1034,81 @@ export default function RegistrationRoundsPage() {
         itemLabel="đợt đăng ký"
       />
 
-      {/* ═══ MODAL TẠO ĐỢT ═══ */}
+      {/* MODAL TẠO ĐỢT */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-200">
             <form onSubmit={handleCreateRound}>
               <div className="px-6 py-4 border-b border-slate-100 bg-[#0B2A63] text-white flex justify-between items-center select-none">
                 <h3 className="font-bold text-sm">Tạo đợt đăng ký đề tài</h3>
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="text-white/70 hover:text-white transition"
-                >
+                <button type="button" onClick={() => setShowCreateModal(false)} className="text-white/70 hover:text-white cursor-pointer">
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto text-xs">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                    Tên đợt đăng ký <span className="text-rose-500">*</span>
-                  </label>
+                  <label className="block font-bold text-slate-700 mb-1">Mã đợt đăng ký <span className="text-rose-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={formCode}
+                    onChange={(e) => setFormCode(e.target.value)}
+                    className="w-full p-2.5 border border-slate-200 rounded-lg font-mono font-bold text-[#0A6EBD] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Tên đợt đăng ký <span className="text-rose-500">*</span></label>
                   <textarea
                     rows={2}
                     required
-                    placeholder="Ví dụ: Đợt đăng ký đề tài NCKH cấp cơ sở – Đợt 2 năm 2026"
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD] resize-none"
+                    className="w-full p-2.5 border border-slate-200 rounded-lg outline-none resize-none"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                      Ngày bắt đầu <span className="text-rose-500">*</span>
-                    </label>
+                    <label className="block font-bold text-slate-700 mb-1">Ngày bắt đầu <span className="text-rose-500">*</span></label>
                     <input
                       type="date"
                       required
                       value={formStartDate}
                       onChange={(e) => setFormStartDate(e.target.value)}
-                      className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD]"
+                      className="w-full p-2.5 border border-slate-200 rounded-lg outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                      Ngày kết thúc <span className="text-rose-500">*</span>
-                    </label>
+                    <label className="block font-bold text-slate-700 mb-1">Ngày kết thúc <span className="text-rose-500">*</span></label>
                     <input
                       type="date"
                       required
                       value={formEndDate}
                       onChange={(e) => setFormEndDate(e.target.value)}
-                      className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD]"
+                      className="w-full p-2.5 border border-slate-200 rounded-lg outline-none"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                    Hạn nộp bổ sung đề cương
-                  </label>
-                  <input
-                    type="date"
-                    value={formDeadlineForAmendment}
-                    onChange={(e) => setFormDeadlineForAmendment(e.target.value)}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                    Đối tượng đăng ký
-                  </label>
-                  <input
-                    type="text"
-                    value={formTargetAudience}
-                    onChange={(e) => setFormTargetAudience(e.target.value)}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                    Lĩnh vực ưu tiên (Ngăn cách bằng dấu phẩy)
-                  </label>
-                  <input
-                    type="text"
-                    value={formPriorityFields}
-                    placeholder="Nhi khoa, Sản khoa, Y học lâm sàng..."
-                    onChange={(e) => setFormPriorityFields(e.target.value)}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                    Giới hạn kinh phí tối đa (VNĐ)
-                  </label>
-                  <input
-                    type="number"
-                    value={formMaxBudget}
-                    onChange={(e) => setFormMaxBudget(e.target.value)}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                    Hướng dẫn / Ghi chú bổ sung
-                  </label>
+                  <label className="block font-bold text-slate-700 mb-1">Ghi chú hướng dẫn</label>
                   <textarea
-                    rows={3}
-                    placeholder="Ghi chú chi tiết điều kiện hoặc tài liệu đính kèm..."
+                    rows={2}
                     value={formDescription}
                     onChange={(e) => setFormDescription(e.target.value)}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD] resize-none"
+                    className="w-full p-2.5 border border-slate-200 rounded-lg outline-none resize-none"
                   />
                 </div>
               </div>
-              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2 select-none">
+              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2 text-xs">
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 transition"
+                  className="px-4 py-2 font-bold text-slate-700 bg-white border rounded-xl hover:bg-slate-100 transition cursor-pointer"
                 >
                   Hủy bỏ
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-[#0A6EBD] hover:bg-[#085896] rounded-xl shadow-2xs transition"
+                  className="px-5 py-2 font-bold text-white bg-[#0A6EBD] hover:bg-[#085896] rounded-xl transition cursor-pointer"
                 >
                   Tạo và mở đợt
                 </button>
@@ -1416,199 +1118,46 @@ export default function RegistrationRoundsPage() {
         </div>
       )}
 
-      {/* ═══ MODAL CHỈNH SỬA ĐỢT ═══ */}
-      {editRound && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-200">
-            <form onSubmit={handleUpdateRound}>
-              <div className="px-6 py-4 border-b border-slate-100 bg-[#0B2A63] text-white flex justify-between items-center select-none">
-                <h3 className="font-bold text-sm">Chỉnh sửa đợt đăng ký đề tài</h3>
-                <button
-                  type="button"
-                  onClick={() => setEditRound(null)}
-                  className="text-white/70 hover:text-white transition"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-                <div className="bg-sky-50 border border-sky-100 p-3 rounded-lg text-xs font-semibold text-slate-600 flex justify-between items-center select-none">
-                  <span>Mã đợt đăng ký (Cố định):</span>
-                  <span className="font-mono font-bold text-[#0A6EBD] text-sm">{editRound.code}</span>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                    Tên đợt đăng ký <span className="text-rose-500">*</span>
-                  </label>
-                  <textarea
-                    rows={2}
-                    required
-                    placeholder="Ví dụ: Đợt đăng ký đề tài NCKH cấp cơ sở – Đợt 2 năm 2026"
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD] resize-none"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                      Ngày bắt đầu <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={formStartDate}
-                      onChange={(e) => setFormStartDate(e.target.value)}
-                      className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                      Ngày kết thúc <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={formEndDate}
-                      onChange={(e) => setFormEndDate(e.target.value)}
-                      className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD]"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                    Hạn nộp bổ sung đề cương
-                  </label>
-                  <input
-                    type="date"
-                    value={formDeadlineForAmendment}
-                    onChange={(e) => setFormDeadlineForAmendment(e.target.value)}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                    Đối tượng đăng ký
-                  </label>
-                  <input
-                    type="text"
-                    value={formTargetAudience}
-                    onChange={(e) => setFormTargetAudience(e.target.value)}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                    Lĩnh vực ưu tiên (Ngăn cách bằng dấu phẩy)
-                  </label>
-                  <input
-                    type="text"
-                    value={formPriorityFields}
-                    placeholder="Nhi khoa, Sản khoa, Y học lâm sàng..."
-                    onChange={(e) => setFormPriorityFields(e.target.value)}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                    Giới hạn kinh phí tối đa (VNĐ)
-                  </label>
-                  <input
-                    type="number"
-                    value={formMaxBudget}
-                    onChange={(e) => setFormMaxBudget(e.target.value)}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                    Hướng dẫn / Ghi chú bổ sung
-                  </label>
-                  <textarea
-                    rows={3}
-                    placeholder="Ghi chú chi tiết điều kiện hoặc tài liệu đính kèm..."
-                    value={formDescription}
-                    onChange={(e) => setFormDescription(e.target.value)}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-[#0A6EBD]/10 focus:border-[#0A6EBD] resize-none"
-                  />
-                </div>
-              </div>
-              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2 select-none">
-                <button
-                  type="button"
-                  onClick={() => setEditRound(null)}
-                  className="px-4 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 transition"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-[#0A6EBD] hover:bg-[#085896] rounded-xl shadow-2xs transition"
-                >
-                  Lưu thay đổi
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ MODAL GIA HẠN ═══ */}
+      {/* MODAL GIA HẠN */}
       {showExtendModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-sm w-full overflow-hidden text-xs">
             <form onSubmit={handleExtend}>
-              <div className="px-5 py-4 border-b border-slate-100 bg-amber-600 text-white flex justify-between items-center select-none">
-                <h3 className="font-bold text-sm flex items-center gap-2">
+              <div className="px-5 py-4 border-b bg-amber-600 text-white flex justify-between items-center">
+                <h3 className="font-bold flex items-center gap-2">
                   <CalendarClock className="w-4 h-4" /> Gia hạn đợt đăng ký
                 </h3>
-                <button
-                  type="button"
-                  onClick={() => setShowExtendModal(null)}
-                  className="text-white/70 hover:text-white"
-                >
+                <button type="button" onClick={() => setShowExtendModal(null)} className="text-white/80 cursor-pointer">
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="p-5 space-y-4">
-                <div className="text-xs font-semibold text-slate-600 space-y-1 select-none">
-                  <p>
-                    Đợt: <strong className="text-slate-800">{showExtendModal.name}</strong>
-                  </p>
-                  <p>
-                    Hạn kết thúc cũ:{' '}
-                    <strong className="text-slate-800 font-mono">
-                      {formatDisplayDate(showExtendModal.endDate)}
-                    </strong>
-                  </p>
-                </div>
+              <div className="p-5 space-y-3">
+                <p>Gia hạn đợt: <strong>{showExtendModal.name}</strong></p>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5 select-none">
-                    Hạn kết thúc mới <span className="text-rose-500">*</span>
-                  </label>
+                  <label className="block font-bold text-slate-700 mb-1">Ngày kết thúc mới *</label>
                   <input
                     type="date"
                     required
                     value={extendDate}
                     min={showExtendModal.endDate}
                     onChange={(e) => setExtendDate(e.target.value)}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-amber-400/20 focus:border-amber-500"
+                    className="w-full p-2.5 border rounded-lg font-semibold outline-none"
                   />
                 </div>
               </div>
-              <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex justify-end gap-2 select-none">
+              <div className="px-5 py-3.5 bg-slate-50 border-t flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setShowExtendModal(null)}
-                  className="px-4 py-1.5 text-xs font-bold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 transition"
+                  className="px-4 py-1.5 font-bold bg-white border rounded-xl hover:bg-slate-100 transition cursor-pointer"
                 >
-                  Hủy bỏ
+                  Hủy
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-2xs transition"
+                  className="px-4 py-1.5 font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition cursor-pointer"
                 >
-                  Gia hạn đợt
+                  Gia hạn ngay
                 </button>
               </div>
             </form>

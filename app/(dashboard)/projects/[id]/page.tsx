@@ -21,13 +21,10 @@ import {
   User,
   Building2,
   DollarSign,
-  FileCheck2,
   CheckCircle2,
-  Clock,
   ShieldCheck,
   AlertCircle,
   FileText,
-  Users,
   Activity,
   Award,
   Download,
@@ -37,24 +34,25 @@ import {
   Check,
   AlertTriangle,
   Lock,
-  Briefcase,
   FileSpreadsheet,
-  History as HistoryIcon,
   X,
   Edit,
   Send
 } from 'lucide-react';
 import { getFlowchartStepInfo } from '@/lib/utils/flowchart-helper';
 import { getProjectWorkflowState } from '@/lib/utils/workflow-engine';
-import { isCouncilChair, isCouncilSecretary } from '@/lib/utils/permissions';
 import { useToast } from '@/components/ui/Toast';
 
 export default function ProjectDetailPage({ params }: { params: { id: string } }) {
   const project = repo.getProjectById(params.id);
-  const council = project ? repo.getCouncils().find((c) => c.projectIds.includes(project.id)) : null;
+  const projectCouncils = project
+    ? repo.getCouncils().filter((item) => item.projectIds.includes(project.id))
+    : [];
   const { currentUser } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'MEMBERS' | 'DOCUMENTS' | 'HISTORY' | 'COUNCIL_MINUTES'>('OVERVIEW');
+  const [activeTab, setActiveTab] = useState<
+    'OVERVIEW' | 'MEMBERS' | 'DOCUMENTS' | 'HISTORY'
+  >('OVERVIEW');
   const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -90,14 +88,19 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   const policy = repo.getPolicyById(project.workflowPolicyId) || repo.getPolicies()[0];
   const workflowState = getProjectWorkflowState(project, policy);
 
-  // Extract decisions and flowchart info (safe to check since project is guaranteed to be defined)
-  const recognitionDecision = project.decisions?.find((d) => d.type === 'RECOGNITION');
-  const assignmentDecision = project.decisions?.find((d) => d.type === 'ASSIGNMENT');
+  // Decision repository là nguồn dữ liệu chính; project.decisions chỉ là snapshot tương thích.
+  const recognitionDecision = repo
+    .getDecisions({ projectId: project.id, type: 'RECOGNITION' })
+    .find((decision) => decision.status === 'ISSUED');
+
+  const assignmentDecision = repo
+    .getDecisions({ projectId: project.id, type: 'ASSIGNMENT' })
+    .find((decision) => decision.status === 'ISSUED');
 
   const getActionableTaskForUser = () => {
     if (!currentUser) return 'Vui lòng đăng nhập để xem nhiệm vụ.';
     const step = workflowState.currentStepNumber;
-    const isPI = project.principalInvestigatorId === currentUser.id || currentUser.role === 'ADMIN';
+    const isPI = project.principalInvestigatorId === currentUser.id;
     const stepInfo = getFlowchartStepInfo(step);
 
     if (currentUser.role === 'RESEARCHER') {
@@ -107,7 +110,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
       return stepInfo.researcherTasks.join(' ') || 'Theo dõi tiến trình xử lý từ Phòng Quản lý NCKH.';
     }
     
-    if (currentUser.role === 'RESEARCH_OFFICE' || currentUser.role === 'ADMIN') {
+    if (currentUser.role === 'RESEARCH_OFFICE') {
       return stepInfo.officeTasks.join(' ') || 'Theo dõi và giám sát tiến độ thực hiện đề tài khoa học.';
     }
 
@@ -169,7 +172,9 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
     UNDER_ADMIN_REVIEW: 'Đang kiểm tra hành chính',
     REVISION_REQUIRED: 'Yêu cầu bổ sung hồ sơ',
     RESUBMITTED: 'Đã nộp lại sau khi bổ sung',
-    VALID: 'Hồ sơ hợp lệ',
+    ADMIN_VALIDATED: 'Đã kiểm tra hành chính',
+    OUTLINE_SUBMITTED: 'Đã nộp đề cương',
+    UNDER_PROPOSAL_REVIEW: 'Đang Hội đồng xét duyệt đề cương',
     PROPOSAL_REVISION_REQUIRED: 'Hội đồng yêu cầu chỉnh sửa đề cương',
     PROPOSAL_RESUBMITTED: 'Đã nộp lại bản đề cương',
     UNDER_PROPOSAL_REVISION_REVIEW: 'Đang xem lại bản điều chỉnh',
@@ -184,8 +189,11 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
     if (project.proposalStatus === 'SUBMITTED' || project.proposalStatus === 'UNDER_ADMIN_REVIEW') {
       return 'Phòng NCKH tiếp tục kiểm tra tính hợp lệ hồ sơ và tài liệu đính kèm.';
     }
-    if (project.status === 'IN_PROGRESS' || project.status === 'WAITING_ASSIGNMENT') {
-      return 'Đề tài đang triển khai, cần nộp báo cáo tiến độ và theo dõi mốc thực hiện.';
+    if (project.status === 'WAITING_ASSIGNMENT') {
+      return 'Đề tài đã đủ điều kiện chuyên môn và đang chờ Quyết định giao thực hiện.';
+    }
+    if (project.status === 'IN_PROGRESS') {
+      return 'Đề tài đang thực hiện; theo dõi mốc và nộp báo cáo tiến độ theo policy áp dụng.';
     }
     if (project.status === 'WAITING_ACCEPTANCE') {
       return 'Chủ nhiệm cần hoàn thiện hồ sơ nghiệm thu để chuyển sang Hội đồng.';
@@ -194,34 +202,82 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   })();
 
   const getWarnings = () => {
-    const warnings = [];
-    const step = workflowState.currentStepNumber;
+    const warnings: string[] = [];
 
-    // Check physical dossiers based on current step
-    if (step === 1 && !project.submittedAt) {
-      warnings.push('Chưa nhận bản cứng Phiếu đề xuất đề tài (BM1)');
-    } else if (step === 3) {
-      const hasOutline = project.documents.some((d) => d.documentType === 'DETAILED_OUTLINE');
-      if (!hasOutline) {
-        warnings.push('Chưa tiếp nhận đủ bản cứng Đề cương thuyết minh chi tiết (BM2)');
-      }
-    } else if (step === 9 && (project.status === 'IN_PROGRESS' || project.status === 'SUSPENDED')) {
-      const hasReports = project.progressReports && project.progressReports.length > 0;
-      if (!hasReports) {
-        warnings.push(`Chưa nhận báo cáo tiến độ định kỳ (Chính sách: ${policy.reportingIntervalMonths} tháng/lần)`);
-      }
-    } else if (step === 14 && project.status !== 'CLOSED' && project.status !== 'ARCHIVED') {
-      const hasLibReceipt = project.documents.some((d) => d.documentType === 'OTHER' && d.title.toLowerCase().includes('thư viện'));
-      if (!hasLibReceipt) {
-        warnings.push('Chưa nhận được biên nhận nộp lưu báo cáo từ Thư viện bệnh viện');
-      }
+    if (
+      project.ethicsRequired &&
+      project.ethicsStatus !== 'ETHICS_APPROVED' &&
+      project.ethicsStatus !== 'NOT_REQUIRED' &&
+      ['WAITING_ASSIGNMENT', 'IN_PROGRESS'].includes(project.status)
+    ) {
+      warnings.push(
+        'Điều kiện đạo đức chưa hoàn tất; cần kiểm tra trước khi chuyển sang/tiếp tục giai đoạn thực hiện.'
+      );
     }
 
-    if (project.ethicsRequired && project.ethicsStatus !== 'ETHICS_APPROVED' && step >= 8) {
-      warnings.push('Hồ sơ đạo đức y sinh (IRB) chưa được cấp phê duyệt chính thức');
+    if (
+      project.status === 'IN_PROGRESS' &&
+      project.endDate &&
+      new Date(project.endDate).getTime() < Date.now()
+    ) {
+      warnings.push(
+        'Đề tài đã quá thời gian thực hiện dự kiến; cần kiểm tra yêu cầu gia hạn/điều chỉnh.'
+      );
+    }
+
+    if (
+      project.status === 'WAITING_ACCEPTANCE' &&
+      !project.acceptanceDossier
+    ) {
+      warnings.push(
+        'Đề tài đang ở giai đoạn chuẩn bị nghiệm thu nhưng chưa có hồ sơ nghiệm thu.'
+      );
     }
 
     return warnings;
+  };
+
+  const handleSubmitProposal = () => {
+    if (currentUser.id !== project.principalInvestigatorId) {
+      info('Chỉ Chủ nhiệm đề tài được nộp hồ sơ đăng ký.');
+      return;
+    }
+
+    if (
+      project.status !== 'DRAFT' ||
+      project.proposalStatus !== 'DRAFT'
+    ) {
+      info('Hồ sơ không còn ở trạng thái cho phép nộp lần đầu.');
+      return;
+    }
+
+    const submittedAt = new Date().toISOString();
+
+    const updated = repo.updateProject(project.id, {
+      status: 'SUBMITTED',
+      proposalStatus: 'SUBMITTED',
+      submittedAt,
+      updatedAt: submittedAt,
+    });
+
+    if (!updated) {
+      info('Không thể nộp hồ sơ. Vui lòng kiểm tra lại dữ liệu.');
+      return;
+    }
+
+    repo.addAuditLog({
+      userId: currentUser.id,
+      userFullName: currentUser.fullName,
+      userRole: currentUser.role,
+      actionCode: 'SUBMIT_PROPOSAL',
+      entityType: 'PROJECT',
+      entityId: project.id,
+      fromStatus: 'DRAFT',
+      toStatus: 'SUBMITTED',
+      notes: 'Chủ nhiệm nộp hồ sơ đăng ký đề tài.',
+    });
+
+    success('Đã nộp hồ sơ đăng ký đề tài.');
   };
 
 
@@ -274,7 +330,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
             <span className="text-slate-300">|</span>
             <span className="flex items-center gap-1.5 text-slate-600">
               <DollarSign className="w-4 h-4 text-emerald-600" />
-              <span>{['DRAFT', 'UNDER_REVIEW', 'REJECTED'].includes(project.status) ? 'Dự kiến' : 'Được duyệt'}:</span>
+              <span>{['DRAFT', 'SUBMITTED'].includes(project.status) ? 'Dự kiến' : 'Được duyệt'}:</span>
               <strong className="font-bold text-emerald-700">{formatVND(project.approvedBudget || project.estimatedBudget)}</strong>
             </span>
           </div>
@@ -293,7 +349,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
               )}
               {(project.proposalStatus === 'REVISION_REQUIRED' || project.proposalStatus === 'PROPOSAL_REVISION_REQUIRED') && (
                 <button 
-                  onClick={() => alert('Chức năng "Nộp lại hồ sơ" đang được cập nhật...')}
+                  onClick={() => info('Hồ sơ cần được chỉnh sửa tại biểu mẫu đăng ký trước khi nộp lại.')}
                   className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-xs"
                 >
                   <Send className="w-4 h-4" /> Nộp lại hồ sơ bổ sung
@@ -306,7 +362,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
             {currentUser && (currentUser.id === project.principalInvestigatorId) && project.status === 'DRAFT' && (
               <button
-                onClick={() => alert('Chức năng "Nộp hồ sơ đề xuất" đang cập nhật...')}
+                onClick={handleSubmitProposal}
                 className="px-3 py-2 bg-white hover:bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
               >
                 <Send className="w-3.5 h-3.5" /> Nộp hồ sơ
@@ -321,7 +377,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
               <Download className="w-3.5 h-3.5 text-slate-400" /> Xuất Word
             </button>
 
-            {project.ethicsRequired && (
+            {project.ethicsRequired && project.ethicsStatus === 'ETHICS_APPROVED' && (
               <button
                 onClick={() => DocxExportService.exportEthicsCertificatePdf(project)}
                 className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
@@ -420,17 +476,6 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
               {project.statusHistory.length}
             </span>
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('COUNCIL_MINUTES')}
-            className={`px-4 py-3 border-b-2 transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-              activeTab === 'COUNCIL_MINUTES'
-                ? 'border-[#0A6EBD] text-[#0A6EBD] bg-white'
-                : 'border-transparent hover:text-slate-900'
-            }`}
-          >
-            Biên bản HĐKH
-          </button>
         </div>
 
         <div className="p-5">
@@ -485,6 +530,29 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
                     </div>
                   </div>
                 </div>
+
+                {projectCouncils.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="border-b border-slate-100 pb-2 text-xs font-bold uppercase tracking-wider text-slate-900">
+                      Hội đồng liên quan
+                    </h3>
+                    <div className="space-y-2">
+                      {projectCouncils.map((item) => (
+                        <Link
+                          key={item.id}
+                          href={`/councils/${item.id}`}
+                          className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs transition hover:border-sky-200 hover:bg-sky-50/30"
+                        >
+                          <div>
+                            <p className="font-bold text-slate-900">{item.name}</p>
+                            <p className="mt-0.5 font-mono text-[10px] text-slate-500">{item.code}</p>
+                          </div>
+                          <StatusBadge status={item.status} />
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* NỘI DUNG ĐỀ XUẤT NGHIÊN CỨU CHI TIẾT */}
                 <div className="space-y-4 bg-slate-50/50 p-4.5 rounded-xl border border-slate-200">
@@ -546,14 +614,14 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
                         Tiến độ thực hiện hiện tại
                       </h3>
                       <span className="text-xs font-bold text-[#0A6EBD] bg-sky-50 px-2 py-0.5 rounded border border-sky-100">
-                        Đã hoàn thành {project.progressPercentage || 0}%
+                        Đã hoàn thành {project.reportedProgressPercentage || 0}%
                       </span>
                     </div>
                     {/* Progress bar */}
                     <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden select-none">
                       <div
                         className="bg-[#0A6EBD] h-2.5 rounded-full transition-all duration-350"
-                        style={{ width: `${project.progressPercentage || 0}%` }}
+                        style={{ width: `${project.reportedProgressPercentage || 0}%` }}
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-4 text-xs font-semibold select-none pt-1">
@@ -608,26 +676,6 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
                         <div className="space-y-0.5 flex-1">
                           <span className="text-slate-800 font-bold block">{doc.name}</span>
                           <span className="text-slate-500 font-medium block">Trạng thái: {doc.status}</span>
-                          
-                          {/* Quick action buttons based on user role */}
-                          <div className="flex gap-1.5 pt-1">
-                            {currentUser && currentUser.role === 'RESEARCHER' && (doc.status.includes('Chưa nộp') || doc.status.includes('Chờ')) && (
-                              <button
-                                onClick={() => success(`Tải lên tệp tin bổ sung cho ${doc.name} thành công!`)}
-                                className="px-2 py-0.5 bg-sky-50 text-[#0A6EBD] border border-sky-200 rounded text-[9px] font-bold hover:bg-sky-100 transition shadow-3xs cursor-pointer flex items-center gap-0.5"
-                              >
-                                <Upload className="w-2.5 h-2.5" /> Tải lên
-                              </button>
-                            )}
-                            {currentUser && currentUser.role === 'RESEARCH_OFFICE' && (doc.status.includes('Chưa') || doc.status.includes('Chờ') || doc.status.includes('yêu cầu')) && (
-                              <button
-                                onClick={() => success(`Xác nhận đã nhận đủ bản cứng của ${doc.name} thành công!`)}
-                                className="px-2 py-0.5 bg-sky-50 text-[#0A6EBD] border border-sky-200 rounded text-[9px] font-bold hover:bg-sky-100 transition shadow-3xs cursor-pointer flex items-center gap-0.5"
-                              >
-                                <Check className="w-2.5 h-2.5" /> Nhận bản cứng
-                              </button>
-                            )}
-                          </div>
                         </div>
                         {doc.required && (
                           <span className="text-xs font-bold text-rose-700 bg-rose-50 px-1.5 py-0.2 rounded shrink-0 select-none">Bắt buộc</span>
@@ -769,12 +817,18 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
                                   >
                                     [Lịch sử phiên bản]
                                   </button>
-                                  <button
-                                    onClick={() => success(`Tải xuống tệp tin ${doc.title} thành công!`)}
-                                    className="text-[#0A6EBD] hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
-                                  >
-                                    <Download className="w-3.5 h-3.5" /> Tải về
-                                  </button>
+                                  {curVerObj?.downloadUrl && curVerObj.downloadUrl !== '#' ? (
+                                    <a
+                                      href={curVerObj.downloadUrl}
+                                      className="text-[#0A6EBD] hover:underline font-bold inline-flex items-center gap-1"
+                                    >
+                                      <Download className="w-3.5 h-3.5" /> Tải về
+                                    </a>
+                                  ) : (
+                                    <span className="text-slate-400 text-[11px]">
+                                      Chưa có tệp tải
+                                    </span>
+                                  )}
                                 </td>
                               </tr>
 
@@ -810,12 +864,18 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
                                                 <span className="text-[11px] text-slate-500 italic block font-normal mt-1">Ghi chú: &ldquo;{v.notes}&rdquo;</span>
                                               )}
                                             </div>
-                                            <button
-                                              onClick={() => success(`Tải xuống phiên bản v${v.version}.0 thành công!`)}
-                                              className="text-[#0A6EBD] hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
-                                            >
-                                              <Download className="w-3.5 h-3.5" /> Tải phiên bản này
-                                            </button>
+                                            {v.downloadUrl && v.downloadUrl !== '#' ? (
+                                              <a
+                                                href={v.downloadUrl}
+                                                className="text-[#0A6EBD] hover:underline font-bold inline-flex items-center gap-1"
+                                              >
+                                                <Download className="w-3.5 h-3.5" /> Tải phiên bản này
+                                              </a>
+                                            ) : (
+                                              <span className="text-slate-400 text-[11px]">
+                                                Chưa có tệp tải
+                                              </span>
+                                            )}
                                           </div>
                                         ))}
                                       </div>
@@ -832,82 +892,14 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
                 </div>
               </div>
 
-              {/* Hồ sơ bản cứng vật lý */}
               <div className="space-y-3.5 pt-4">
-                <h3 className="font-bold text-slate-900 text-sm flex items-center gap-1.5 select-none">
-                  <FileSpreadsheet className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
-                  <span>Hồ sơ bản cứng (Giao nhận vật lý quy chuẩn ISO 6.1)</span>
+                <h3 className="flex items-center gap-1.5 text-sm font-bold text-slate-900">
+                  <FileSpreadsheet className="h-4.5 w-4.5 shrink-0 text-emerald-600" />
+                  <span>Giao nhận hồ sơ bản cứng</span>
                 </h3>
-                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs bg-white">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead className="bg-[#F8FAFC] border-b border-slate-200/80 text-slate-500 font-bold uppercase select-none">
-                      <tr>
-                        <th className="p-3 w-64">Loại hồ sơ bản cứng</th>
-                        <th className="p-3 w-36 text-center">Yêu cầu tối thiểu</th>
-                        <th className="p-3 w-36 text-center">Trạng thái nhận</th>
-                        <th className="p-3 w-40 text-center">Ngày nhận</th>
-                        <th className="p-3">Người tiếp nhận</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-slate-700 font-semibold">
-                      <tr className="hover:bg-slate-50/50">
-                        <td className="p-3 font-bold text-slate-950">Phiếu đề xuất đề tài (BM1)</td>
-                        <td className="p-3 text-center text-slate-600 font-mono">01 bản cứng</td>
-                        {workflowState.currentStepNumber >= 2 ? (
-                          <>
-                            <td className="p-3 text-center text-emerald-700 bg-emerald-50 font-bold">Đã nhận</td>
-                            <td className="p-3 text-center font-mono text-slate-500">{formatDate(project.submittedAt || project.createdAt)}</td>
-                            <td className="p-3 text-slate-600">Phòng Quản lý NCKH</td>
-                          </>
-                        ) : (
-                          <>
-                            <td className="p-3 text-center text-slate-400 bg-slate-50 font-bold">Chưa nhận</td>
-                            <td className="p-3 text-center font-mono text-slate-400">---</td>
-                            <td className="p-3 text-slate-400">---</td>
-                          </>
-                        )}
-                      </tr>
-                      <tr className="hover:bg-slate-50/50">
-                        <td className="p-3 font-bold text-slate-950">Đề cương chi tiết (BM2)</td>
-                        <td className="p-3 text-center text-slate-600 font-mono">06 bản cứng</td>
-                        {workflowState.currentStepNumber >= 4 ? (
-                          <>
-                            <td className="p-3 text-center text-emerald-700 bg-emerald-50 font-bold">Đã nhận</td>
-                            <td className="p-3 text-center font-mono text-slate-500">{formatDate(project.approvedAt || project.updatedAt)}</td>
-                            <td className="p-3 text-slate-600">Phòng Quản lý NCKH</td>
-                          </>
-                        ) : (
-                          <>
-                            <td className="p-3 text-center text-slate-400 bg-slate-50 font-bold">Chưa nhận</td>
-                            <td className="p-3 text-center font-mono text-slate-400">---</td>
-                            <td className="p-3 text-slate-400">---</td>
-                          </>
-                        )}
-                      </tr>
-                      {['WAITING_ACCEPTANCE', 'ACCEPTED', 'RECOGNIZED', 'CLOSED', 'ARCHIVED'].includes(project.status) ? (
-                        <>
-                          <tr className="hover:bg-slate-50/50">
-                            <td className="p-3 font-bold text-slate-950">Báo cáo kết quả nghiệm thu (BM11)</td>
-                            <td className="p-3 text-center text-slate-600 font-mono">06 bản cứng</td>
-                            <td className="p-3 text-center text-emerald-700 bg-emerald-50 font-bold">Đã nhận</td>
-                            <td className="p-3 text-center font-mono text-slate-500">{formatDate(project.completedAt || '2026-11-05')}</td>
-                            <td className="p-3 text-slate-600">Phòng Quản lý NCKH</td>
-                          </tr>
-                          <tr className="hover:bg-slate-50/50">
-                            <td className="p-3 font-bold text-slate-950">Quyển báo cáo hoàn chỉnh lưu thư viện</td>
-                            <td className="p-3 text-center text-slate-600 font-mono">01 quyển cứng</td>
-                            <td className="p-3 text-center text-[#0A6EBD] bg-sky-50 font-bold">Đã nhận</td>
-                            <td className="p-3 text-center font-mono text-slate-500">{project.completedAt ? formatDate(project.completedAt) : 'Chưa nhận'}</td>
-                            <td className="p-3 text-slate-600">Thủ thư Thư viện</td>
-                          </tr>
-                        </>
-                      ) : (
-                        <tr className="text-slate-450 italic">
-                          <td colSpan={5} className="p-4 text-center">Chưa tới giai đoạn nộp hồ sơ báo cáo nghiệm thu bản cứng</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-relaxed text-slate-600">
+                  Hệ thống hiện chưa có entity giao nhận hồ sơ bản cứng để xác minh số lượng bản, ngày nhận và người tiếp nhận.
+                  Không hiển thị dữ liệu giả dựa trên bước workflow. Khi bổ sung model PhysicalDossierReceipt, thông tin giao nhận sẽ hiển thị tại đây.
                 </div>
               </div>
             </div>
@@ -949,7 +941,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
                             {h.action.includes('Quyết định giao thực hiện') && assignmentDecision && (
                               <button
                                 onClick={() => info(`Đang tải Quyết định giao thực hiện số ${assignmentDecision.decisionNumber} scan...`)}
-                                className="mt-1.5 px-2 py-0.5 bg-sky-50 hover:bg-sky-100 text-[#0A6EBD] border border-sky-200 rounded text-[9px] font-bold transition flex items-center gap-0.5 cursor-pointer inline-flex"
+                                className="mt-1.5 px-2 py-0.5 bg-sky-50 hover:bg-sky-100 text-[#0A6EBD] border border-sky-200 rounded text-[9px] font-bold transition flex items-center gap-0.5 cursor-pointer"
                               >
                                 <Download className="w-2.5 h-2.5" /> [Tải Quyết định scan]
                               </button>
@@ -957,7 +949,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
                             {h.action.includes('Hội đồng Khoa học thông qua') && (
                               <button
                                 onClick={() => info('Đang tải Biên bản họp Hội đồng xét duyệt đề cương (BM6)...')}
-                                className="mt-1.5 px-2 py-0.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded text-[9px] font-bold transition flex items-center gap-0.5 cursor-pointer inline-flex"
+                                className="mt-1.5 px-2 py-0.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded text-[9px] font-bold transition  items-center gap-0.5 cursor-pointer inline-flex"
                               >
                                 <Download className="w-2.5 h-2.5" /> [Tải Biên bản HĐ]
                               </button>
@@ -975,92 +967,6 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
             </div>
           )}
 
-          {/* TAB 5: BIÊN BẢN HĐKH (MÔ PHỎNG KÝ) */}
-          {activeTab === 'COUNCIL_MINUTES' && (
-            <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                <h3 className="font-bold text-slate-900 text-sm">
-                  Biên bản họp Hội đồng Đánh giá
-                </h3>
-                {council && isCouncilSecretary(currentUser, council) && (
-                  <button
-                    onClick={() => info('Tính năng chỉnh sửa nội dung biên bản đang được cập nhật.')}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition"
-                  >
-                    Chỉnh sửa nội dung
-                  </button>
-                )}
-              </div>
-
-              {/* A4 Paper Mockup */}
-              <div className="max-w-3xl mx-auto bg-white border border-slate-200 shadow-xl rounded-sm p-10 print:shadow-none print:p-0">
-                <div className="flex justify-between items-start text-sm mb-12">
-                  <div className="text-center">
-                    <p className="font-bold uppercase">SỞ Y TẾ HÀ NỘI</p>
-                    <p className="font-bold underline uppercase">BỆNH VIỆN ĐA KHOA SÓC SƠN</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="font-bold uppercase">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
-                    <p className="font-bold underline">Độc lập - Tự do - Hạnh phúc</p>
-                    <p className="text-xs italic mt-2">Sóc Sơn, ngày {formatDate(project.createdAt)}</p>
-                  </div>
-                </div>
-
-                <div className="text-center mb-8">
-                  <h1 className="text-lg font-bold uppercase mb-2">
-                    BIÊN BẢN HỌP HỘI ĐỒNG ĐÁNH GIÁ
-                  </h1>
-                  <h2 className="text-sm font-bold uppercase">
-                    THUYẾT MINH ĐỀ TÀI KHOA HỌC VÀ CÔNG NGHỆ CẤP CƠ SỞ
-                  </h2>
-                </div>
-
-                <div className="space-y-4 text-sm leading-relaxed">
-                  <p><span className="font-bold">1. Tên đề tài:</span> {project.title}</p>
-                  <p><span className="font-bold">2. Chủ nhiệm đề tài:</span> {project.principalInvestigatorName}</p>
-                  <p><span className="font-bold">3. Quyết định thành lập Hội đồng:</span> Số QĐ-BVDKSS</p>
-                  <p><span className="font-bold">4. Cơ quan thực hiện đề tài:</span> Bệnh viện đa khoa Sóc Sơn</p>
-                  <p><span className="font-bold">5. Ngày họp:</span> {formatDate(project.createdAt)}</p>
-                  <p><span className="font-bold">6. Địa điểm:</span> Phòng họp số 1</p>
-                  <p><span className="font-bold">7. Thành viên của hội đồng:</span></p>
-                  <p className="pl-4 italic">Tổng số: 5. Có mặt: 5. Vắng mặt: 0</p>
-                  <p><span className="font-bold">8. Nhận xét của hội đồng:</span> Đề cương trình bày rõ ràng, tính cấp thiết cao.</p>
-                  <p><span className="font-bold">9. Kết luận:</span> Đề nghị thông qua với yêu cầu chỉnh sửa nhỏ.</p>
-                </div>
-
-                {/* Chữ ký */}
-                <div className="flex justify-between items-start mt-20 text-sm font-bold">
-                  <div className="text-center">
-                    <p className="mb-20 uppercase">CHỦ TỊCH HỘI ĐỒNG</p>
-                    {/* Giả định role Chủ tịch chưa ký */}
-                    {(council && isCouncilChair(currentUser, council)) || currentUser.role === 'ADMIN' ? (
-                       <button
-                         onClick={() => success('Đã ký số biên bản thành công!')}
-                         className="px-6 py-2 bg-[#0A6EBD] hover:bg-[#085896] text-white rounded-lg transition print:hidden"
-                       >
-                         Ký
-                       </button>
-                    ) : (
-                       <p className="text-slate-400 font-normal italic">(Chưa ký)</p>
-                    )}
-                  </div>
-                  <div className="text-center">
-                    <p className="mb-20 uppercase">THƯ KÝ</p>
-                    {(council && isCouncilSecretary(currentUser, council)) || currentUser.role === 'ADMIN' ? (
-                       <button
-                         onClick={() => success('Đã ký số biên bản thành công!')}
-                         className="px-6 py-2 bg-[#0A6EBD] hover:bg-[#085896] text-white rounded-lg transition print:hidden"
-                       >
-                         Ký
-                       </button>
-                    ) : (
-                       <p className="text-slate-400 font-normal italic">(Chưa ký)</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

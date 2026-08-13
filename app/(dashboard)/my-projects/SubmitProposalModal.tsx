@@ -1,91 +1,289 @@
 'use client';
 
-import React, { useState } from 'react';
-import { X, Upload, File } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Send, Upload, X } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 
-interface SubmitProposalModalProps {
+export type SubmitOutlinePayload = {
+  projectId: string;
+  fromMonth: string;
+  toMonth: string;
+  file: File;
+};
+
+interface SubmitOutlineModalProps {
   isOpen: boolean;
   onClose: () => void;
-  projectCode: string;
+  projectId: string;
+  displayCode: string;
+  onSubmit: (payload: SubmitOutlinePayload) => Promise<void>;
 }
 
-export function SubmitProposalModal({ isOpen, onClose, projectCode }: SubmitProposalModalProps) {
-  const [fromDate, setFromDate] = useState('March 2025');
-  const [toDate, setToDate] = useState('April 2025');
-  const [fileName, setFileName] = useState('');
-  const { success } = useToast();
+const ALLOWED_EXTENSIONS = ['doc', 'docx', 'pdf'];
+const MAX_FILE_SIZE_MB = 20;
 
-  if (!isOpen) return null;
+export function SubmitOutlineModal({
+  isOpen,
+  onClose,
+  projectId,
+  displayCode,
+  onSubmit,
+}: SubmitOutlineModalProps) {
+  const { warning, error } = useToast();
 
-  const handleSave = () => {
-    success('Đã tải lên đề cương thành công! Trạng thái chuyển thành "Chờ duyệt đề xuất".');
+  const [fromMonth, setFromMonth] = useState('');
+  const [toMonth, setToMonth] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const resetForm = () => {
+    setFromMonth('');
+    setToMonth('');
+    setFile(null);
+  };
+
+  const handleClose = () => {
+    if (isSubmitting) return;
+    resetForm();
     onClose();
   };
 
+  useEffect(() => {
+    if (!isOpen) resetForm();
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const validateFile = (selectedFile: File): string | null => {
+    const extension = selectedFile.name.split('.').pop()?.toLowerCase();
+
+    if (!extension || !ALLOWED_EXTENSIONS.includes(extension)) {
+      return 'Tệp đề cương chỉ hỗ trợ định dạng DOC, DOCX hoặc PDF.';
+    }
+
+    const fileSizeMb = selectedFile.size / 1024 / 1024;
+
+    if (fileSizeMb > MAX_FILE_SIZE_MB) {
+      return `Dung lượng tệp không được vượt quá ${MAX_FILE_SIZE_MB} MB.`;
+    }
+
+    return null;
+  };
+
+  const handleFileChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const selectedFile = event.target.files?.[0] ?? null;
+
+    if (!selectedFile) {
+      setFile(null);
+      return;
+    }
+
+    const validationMessage = validateFile(selectedFile);
+
+    if (validationMessage) {
+      warning(validationMessage);
+      event.target.value = '';
+      setFile(null);
+      return;
+    }
+
+    setFile(selectedFile);
+  };
+
+  const handleSubmit = async () => {
+    if (!projectId) {
+      error('Không xác định được đề tài cần nộp đề cương.');
+      return;
+    }
+
+    if (!fromMonth || !toMonth) {
+      warning('Vui lòng chọn đầy đủ thời gian thực hiện dự kiến.');
+      return;
+    }
+
+    if (toMonth < fromMonth) {
+      warning('Thời gian kết thúc phải sau hoặc bằng thời gian bắt đầu.');
+      return;
+    }
+
+    if (!file) {
+      warning('Vui lòng chọn tệp đề cương trước khi nộp.');
+      return;
+    }
+
+    const fileValidationMessage = validateFile(file);
+
+    if (fileValidationMessage) {
+      warning(fileValidationMessage);
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      await onSubmit({
+        projectId,
+        fromMonth,
+        toMonth,
+        file,
+      });
+
+      resetForm();
+      onClose();
+    } catch {
+      error('Không thể nộp đề cương. Vui lòng kiểm tra lại thông tin.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
-          <h2 className="text-[15px] font-bold text-[#0A6EBD] uppercase tracking-wide">TẢI LÊN ĐỀ CƯƠNG</h2>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-6">
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">Thực hiện từ tháng</label>
-              <input 
-                type="text" 
-                value={fromDate}
-                onChange={e => setFromDate(e.target.value)}
-                className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#0A6EBD]" 
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">Thực hiện đến tháng</label>
-              <input 
-                type="text" 
-                value={toDate}
-                onChange={e => setToDate(e.target.value)}
-                className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#0A6EBD]" 
-              />
-            </div>
-          </div>
-
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="submit-outline-title"
+    >
+      <div className="w-full max-w-2xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-start justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">Chọn file</label>
-            <div className="flex items-center gap-3">
-              <label className="flex items-center justify-center px-4 py-2 bg-slate-100 border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-200 transition-colors text-sm font-medium text-slate-700">
-                <Upload className="w-4 h-4 mr-2 text-slate-500" />
-                Choose File
-                <input 
-                  type="file" 
-                  className="hidden" 
-                  onChange={(e) => setFileName(e.target.files?.[0]?.name || '')}
-                />
-              </label>
-              <span className="text-sm text-slate-500 truncate">
-                {fileName ? fileName : 'Quy trình quản lý vật tư, thuốc_v99.22.05 (1).docx'}
-              </span>
-            </div>
+            <h2
+              id="submit-outline-title"
+              className="text-base font-semibold text-slate-900"
+            >
+              Nộp đề cương chi tiết
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Hồ sơ: {displayCode || '—'}
+            </p>
           </div>
+
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={isSubmitting}
+            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Đóng"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-center gap-3">
-          <button 
-            onClick={handleSave}
-            className="px-8 py-2 bg-[#0A6EBD] text-white rounded-lg font-bold text-sm hover:bg-[#085a9c] transition-colors shadow-sm"
-          >
-            Lưu
-          </button>
-          <button 
-            onClick={onClose}
-            className="px-8 py-2 bg-slate-500 text-white rounded-lg font-bold text-sm hover:bg-slate-600 transition-colors shadow-sm"
+        <div className="space-y-6 p-6">
+          <section>
+            <h3 className="mb-3 text-sm font-semibold text-slate-800">
+              Thời gian thực hiện dự kiến
+            </h3>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label
+                  htmlFor="outline-from-month"
+                  className="mb-1.5 block text-sm font-medium text-slate-700"
+                >
+                  Từ tháng <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  id="outline-from-month"
+                  type="month"
+                  value={fromMonth}
+                  disabled={isSubmitting}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setFromMonth(value);
+
+                    if (toMonth && toMonth < value) {
+                      setToMonth('');
+                    }
+                  }}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-[#0A6EBD] focus:ring-2 focus:ring-sky-100 disabled:bg-slate-100"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="outline-to-month"
+                  className="mb-1.5 block text-sm font-medium text-slate-700"
+                >
+                  Đến tháng <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  id="outline-to-month"
+                  type="month"
+                  value={toMonth}
+                  min={fromMonth || undefined}
+                  disabled={isSubmitting}
+                  onChange={(e) => setToMonth(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-[#0A6EBD] focus:ring-2 focus:ring-sky-100 disabled:bg-slate-100"
+                />
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <div className="mb-3">
+              <h3 className="text-sm font-semibold text-slate-800">
+                Tệp đề cương
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Hỗ trợ DOC, DOCX hoặc PDF. Dung lượng tối đa{' '}
+                {MAX_FILE_SIZE_MB} MB.
+              </p>
+            </div>
+
+            <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 transition hover:border-sky-300 hover:bg-sky-50/40">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white">
+                  <Upload className="h-4 w-4 text-[#0A6EBD]" />
+                </div>
+
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-700">
+                    {file ? file.name : 'Chọn tệp đề cương'}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {file
+                      ? `${(file.size / 1024 / 1024).toFixed(2)} MB`
+                      : 'Nhấn để chọn tệp từ máy tính'}
+                  </p>
+                </div>
+              </div>
+
+              <span className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">
+                {file ? 'Thay tệp' : 'Chọn tệp'}
+              </span>
+
+              <input
+                type="file"
+                accept=".doc,.docx,.pdf"
+                disabled={isSubmitting}
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </label>
+          </section>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4">
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={isSubmitting}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Hủy
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#0A6EBD] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#085896] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Send className="h-4 w-4" />
+            {isSubmitting ? 'Đang nộp...' : 'Nộp đề cương'}
           </button>
         </div>
       </div>

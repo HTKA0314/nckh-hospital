@@ -138,7 +138,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="mt-3.5 flex items-baseline justify-between">
-            <div className="text-2xl font-bold font-sans text-rose-600 tracking-tight">{stats.delayedProjects}</div>
+            <div className="text-2xl font-bold font-sans text-rose-600 tracking-tight"></div>
             <span className="inline-flex items-center text-[10.5px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100/40">
               Cảnh báo
             </span>
