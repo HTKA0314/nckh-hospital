@@ -4,6 +4,9 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { repo } from '@/lib/repository';
 import { useAuth } from '@/lib/auth-context';
+import { PageHeader } from '@/components/common/PageHeader';
+import { TableEmptyState } from '@/components/common/EmptyState';
+import { useToast } from '@/components/ui/Toast';
 import { Pagination } from '@/components/ui/Pagination';
 import {
   GitPullRequest,
@@ -21,6 +24,7 @@ import {
 
 export default function ChangeRequestsPage() {
   const { currentUser } = useAuth();
+  const { success } = useToast();
   const projects = repo.getProjects().filter((p) => p.status === 'IN_PROGRESS');
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -80,57 +84,58 @@ export default function ChangeRequestsPage() {
 
   return (
     <div className="space-y-3 text-slate-800">
-      {/* ── Toolbar: Search + Actions trên 1 hàng ── */}
-      <div className="flex items-center gap-2.5">
-        {/* Search */}
-        <div className="relative flex-1 max-w-lg">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Tìm theo mã yêu cầu, mã đề tài, tên đề tài..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-8 py-2 rounded-lg border border-slate-300 focus:border-[#0A6EBD] focus:ring-1 focus:ring-[#0A6EBD] text-[13px] outline-none bg-white shadow-xs"
-          />
-          {search && (
+      {/* ── HEADER: Tiêu đề trang + Actions ── */}
+      <PageHeader
+        title="Yêu cầu điều chỉnh đề tài"
+        description="Quản lý các đề xuất gia hạn, thay đổi thành viên hoặc điều chỉnh kinh phí thực hiện"
+        actions={
+          <>
             <button
-              onClick={() => setSearch('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[13px] font-semibold shadow-xs transition whitespace-nowrap"
             >
-              <X className="w-3.5 h-3.5" />
+              <Printer className="w-3.5 h-3.5" /> In danh mục
             </button>
-          )}
-        </div>
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Actions */}
-        <button
-          onClick={() => window.print()}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[13px] font-semibold shadow-xs transition whitespace-nowrap"
-        >
-          <Printer className="w-3.5 h-3.5" /> In danh mục
-        </button>
-
-        {currentUser.role === 'RESEARCHER' && (
-          <button
-            onClick={() => setModalOpen(true)}
-            className="inline-flex items-center gap-1.5 bg-[#0A6EBD] hover:bg-[#085896] text-white font-semibold px-3.5 py-2 rounded-lg text-[13px] shadow-xs transition whitespace-nowrap"
-          >
-            <Plus className="w-3.5 h-3.5" /> Tạo yêu cầu điều chỉnh mới
-          </button>
-        )}
-      </div>
+            {currentUser.role === 'RESEARCHER' && (
+              <button
+                onClick={() => setModalOpen(true)}
+                className="inline-flex items-center gap-1.5 bg-[#0A6EBD] hover:bg-[#085896] text-white font-semibold px-3.5 py-2 rounded-lg text-[13px] shadow-xs transition whitespace-nowrap"
+              >
+                <Plus className="w-3.5 h-3.5" /> Tạo yêu cầu điều chỉnh mới
+              </button>
+            )}
+          </>
+        }
+      />
 
       {/* ── Filter Bar ── */}
       <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs px-4 py-2.5 flex flex-wrap items-center gap-2.5">
         <Filter className="w-4 h-4 text-slate-400 shrink-0" />
 
+        {/* Search */}
+        <div className="relative w-64">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Tìm mã yêu cầu, tên đề tài..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-8 py-1.5 rounded-lg border border-slate-300 focus:border-[#0A6EBD] focus:ring-1 focus:ring-[#0A6EBD] text-xs outline-none bg-white transition"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-650"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
         <select
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
-          className={`py-1.5 px-3 rounded-lg border text-[13px] font-medium outline-none transition ${
+          className={`py-1.5 px-3 rounded-lg border text-xs font-medium outline-none transition cursor-pointer ${
             filterType !== 'ALL'
               ? 'border-[#0A6EBD] text-[#0A6EBD] bg-[#EBF4FC]'
               : 'border-slate-300 bg-white text-slate-600'
@@ -145,7 +150,7 @@ export default function ChangeRequestsPage() {
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className={`py-1.5 px-3 rounded-lg border text-[13px] font-medium outline-none transition ${
+          className={`py-1.5 px-3 rounded-lg border text-xs font-medium outline-none transition cursor-pointer ${
             filterStatus !== 'ALL'
               ? 'border-[#0A6EBD] text-[#0A6EBD] bg-[#EBF4FC]'
               : 'border-slate-300 bg-white text-slate-600'
@@ -160,7 +165,7 @@ export default function ChangeRequestsPage() {
         {hasFilters && (
           <button
             onClick={() => { setFilterType('ALL'); setFilterStatus('ALL'); setSearch(''); }}
-            className="text-[12px] text-rose-500 hover:text-rose-700 font-semibold flex items-center gap-1 transition"
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-100 transition-all shadow-2xs cursor-pointer animate-in fade-in"
           >
             <X className="w-3 h-3" /> Xóa bộ lọc
           </button>
@@ -180,7 +185,7 @@ export default function ChangeRequestsPage() {
                 <th className="px-4 py-3 w-28 whitespace-nowrap">MÃ YÊU CẦU</th>
                 <th className="px-4 py-3 min-w-[280px]">ĐỀ TÀI NGHIÊN CỨU</th>
                 <th className="px-4 py-3 w-48 whitespace-nowrap">LOẠI ĐIỀU CHỈNH</th>
-                <th className="px-4 py-3">LÝ DO ĐIỀU CHỈNH</th>
+                <th className="px-4 py-3 min-w-[320px]">LÝ DO ĐIỀU CHỈNH</th>
                 <th className="px-4 py-3 w-28 whitespace-nowrap">NGÀY GỬI</th>
                 <th className="px-4 py-3 w-32 text-center whitespace-nowrap">TRẠNG THÁI</th>
                 <th className="px-4 py-3 text-center w-20 whitespace-nowrap">THAO TÁC</th>
@@ -188,21 +193,24 @@ export default function ChangeRequestsPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredRequests.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
-                    Không tìm thấy yêu cầu điều chỉnh nào phù hợp.
-                  </td>
-                </tr>
+                <TableEmptyState
+                  colSpan={7}
+                  title="Không tìm thấy yêu cầu điều chỉnh"
+                  description="Không tìm thấy yêu cầu điều chỉnh nào phù hợp với bộ lọc."
+                />
               ) : (
                 pagedRequests.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-50 transition">
+                  <tr
+                    key={r.id}
+                    className="hover:bg-slate-50 transition border-l-4 border-l-transparent hover:border-l-[#0A6EBD]"
+                  >
                     <td className="px-4 py-3 font-mono font-bold text-[#0A6EBD] whitespace-nowrap">{r.id}</td>
                     <td className="px-4 py-3">
                       <span className="font-mono text-xs text-[#0A6EBD] font-bold block">{r.code}</span>
                       <p className="font-semibold text-slate-900 line-clamp-1 mt-0.5">{r.title}</p>
                     </td>
                     <td className="px-4 py-3 font-semibold text-slate-800">{r.type}</td>
-                    <td className="px-4 py-3 text-slate-600 text-xs">{r.reason}</td>
+                    <td className="px-4 py-3 text-slate-600 text-xs break-words max-w-md">{r.reason}</td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-600 whitespace-nowrap">{r.requestDate}</td>
                     <td className="px-4 py-3 text-center whitespace-nowrap">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold border ${r.statusColor}`}>
@@ -291,7 +299,7 @@ export default function ChangeRequestsPage() {
               </button>
               <button
                 onClick={() => {
-                  alert('Đã gửi đơn yêu cầu điều chỉnh lên Phòng Quản lý NCKH!');
+                  success('Đã gửi đơn yêu cầu điều chỉnh lên Phòng Quản lý NCKH!');
                   setModalOpen(false);
                 }}
                 className="px-4 py-1.5 bg-[#0A6EBD] hover:bg-[#085896] text-white rounded-lg text-xs font-semibold shadow-2xs"

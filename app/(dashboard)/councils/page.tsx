@@ -6,7 +6,7 @@ import { repo } from '@/lib/repository';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/Toast';
 import { useSearchParams } from 'next/navigation';
-import { Council, CouncilRole, CouncilProjectAssignment } from '@/lib/types';
+import { Council, CouncilMember, CouncilRole, CouncilProjectAssignment } from '@/lib/types';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Pagination } from '@/components/ui/Pagination';
 import {
@@ -33,6 +33,7 @@ import {
   HelpCircle,
   UserCheck,
   UserX,
+  PenTool,
 } from 'lucide-react';
 
 const SPECIALTY_CLUSTERS = [
@@ -80,6 +81,7 @@ function CouncilsContent() {
   // State Modal Thành lập Hội đồng Mới
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [modalStep, setModalStep] = useState<1 | 2 | 3>(1);
+  const [editingCouncilId, setEditingCouncilId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     code: `HĐ-${new Date().getFullYear()}-${String(councils.length + 1).padStart(3, '0')}`,
@@ -91,11 +93,11 @@ function CouncilsContent() {
     decisionStatus: 'DRAFT' as 'DRAFT' | 'ISSUED',
     signatoryName: 'GS.TS.BS. Vũ Đình Khoa (Giám đốc Bệnh viện)',
     signatoryRole: 'Giám đốc Bệnh viện',
-    meetingDate: '15/03/2026',
-    meetingTime: '08:30',
+    meetingDate: '',
+    meetingTime: '',
     meetingFormat: 'HYBRID' as 'OFFLINE' | 'ONLINE' | 'HYBRID',
-    location: 'Phòng họp Giao ban Khoa học (Tầng 3 Nhà A)',
-    onlineMeetingUrl: 'https://meet.hospital.gov.vn/hoi-dong-nckh-01',
+    location: '',
+    onlineMeetingUrl: '',
     sendInvitationNotification: true,
     // Cơ cấu thành viên thường trực
     chairId: 'user-10', // GS.TS.BS Vũ Đình Khoa
@@ -104,10 +106,10 @@ function CouncilsContent() {
     secretaryName: 'BS.CKI. Đỗ Bích Ngọc',
     member1Id: 'user-06', // TS.BS Hoàng Minh Tuấn
     member1Name: 'TS.BS. Hoàng Minh Tuấn',
-    member2Id: 'user-08', // TS.BS Vũ Thị Hồng Hạnh
-    member2Name: 'TS.BS. Vũ Thị Hồng Hạnh',
-    member3Id: 'user-13', // TS.BS Phan Quỳnh Nga
-    member3Name: 'TS.BS. Phan Quỳnh Nga',
+    member2Id: '',
+    member2Name: '',
+    member3Id: '',
+    member3Name: '',
     memberAbsentWithWrittenReview: false,
     // Danh sách đề tài & phân công phản biện riêng
     selectedProjectIds: ['proj-01', 'proj-02'] as string[],
@@ -265,28 +267,29 @@ function CouncilsContent() {
       return;
     }
 
-    if (hasAnyConflict) {
-      error(
-        'Phát hiện xung đột lợi ích: Có Bác sĩ phản biện trùng với Chủ nhiệm hoặc thành viên nhóm nghiên cứu. Vui lòng chọn lại phản biện độc lập!',
-        'Vi phạm quy chế Đạo đức & NCKH'
-      );
-      return;
-    }
-
     const actionTitle = isOfficialIssuance
-      ? 'Xác nhận Ban hành Quyết định & Gửi Giấy mời họp'
-      : 'Lưu Dự thảo Quyết định Thành lập Hội đồng';
+      ? isEditMode
+        ? 'Xác nhận Cập nhật & Ban hành Quyết định'
+        : 'Xác nhận Ban hành Quyết định & Gửi Giấy mời họp'
+      : isEditMode
+        ? 'Lưu Cập nhật Dự thảo Quyết định'
+        : 'Lưu Dự thảo Quyết định Thành lập Hội đồng';
 
     const actionMsg = isOfficialIssuance
-      ? `Hội đồng "${formData.name}" sẽ chính thức có hiệu lực theo Quyết định số ${formData.establishmentDecisionNumber}. Hệ thống sẽ tự động gửi Giấy mời họp kèm hồ sơ đề cương cho tất cả các thành viên qua Email/Zalo.`
-      : `Hệ thống sẽ lưu hồ sơ Quyết định thành lập Hội đồng ở trạng thái DỰ THẢO để trình Trưởng phòng NCKH và Ban Giám đốc Bệnh viện phê duyệt.`;
+      ? isEditMode
+        ? `Hội đồng "${formData.name}" sẽ được cập nhật và chính thức có hiệu lực theo Quyết định số ${formData.establishmentDecisionNumber}.`
+        : `Hội đồng "${formData.name}" sẽ chính thức có hiệu lực theo Quyết định số ${formData.establishmentDecisionNumber}. Hệ thống sẽ tự động gửi Giấy mời họp kèm hồ sơ đề cương cho tất cả các thành viên qua Email/Zalo.`
+      : isEditMode
+        ? `Hệ thống sẽ lưu các cập nhật cho Hội đồng "${formData.name}" dưới dạng DỰ THẢO.`
+        : `Hệ thống sẽ lưu hồ sơ Quyết định thành lập Hội đồng ở trạng thái DỰ THẢO để trình Trưởng phòng NCKH và Ban Giám đốc Bệnh viện phê duyệt.`;
 
     confirm({
       title: actionTitle,
       message: actionMsg,
-      confirmLabel: isOfficialIssuance ? 'Ban hành & Gửi Giấy mời' : 'Lưu Dự thảo',
+      confirmLabel: isOfficialIssuance ? 'Ban hành & Ghi nhận' : 'Lưu lại',
       type: isOfficialIssuance ? 'info' : 'warning',
       onConfirm: () => {
+        const councilId = editingCouncilId || `council-${Date.now()}`;
         const projectAssignmentsList: CouncilProjectAssignment[] = formData.selectedProjectIds.map((pId) => {
           const assign = formData.projectAssignments[pId] || {
             reviewer1Id: '',
@@ -305,8 +308,74 @@ function CouncilsContent() {
           };
         });
 
-        const newCouncil: Council = {
-          id: `council-${Date.now()}`,
+        const members: CouncilMember[] = [
+          {
+            id: `${councilId}-member-1`,
+            councilId,
+            userId: formData.chairId,
+            userFullName: formData.chairName,
+            academicTitle: 'Chủ tịch Hội đồng',
+            departmentName: 'Ban Giám đốc Bệnh viện',
+            roleInCouncil: 'CHỦ_TỊCH' as CouncilRole,
+            hasConflictOfInterest: false,
+            evaluationSubmitted: false,
+          },
+          {
+            id: `${councilId}-member-2`,
+            councilId,
+            userId: formData.secretaryId,
+            userFullName: formData.secretaryName,
+            academicTitle: 'Thư ký khoa học',
+            departmentName: 'Phòng Quản lý NCKH',
+            roleInCouncil: 'THƯ_KÝ' as CouncilRole,
+            hasConflictOfInterest: false,
+            evaluationSubmitted: false,
+          },
+          {
+            id: `${councilId}-member-3`,
+            councilId,
+            userId: formData.member1Id,
+            userFullName: formData.member1Name,
+            academicTitle: 'Ủy viên thường trực',
+            departmentName: 'Khoa Hồi sức tích cực',
+            roleInCouncil: 'ỦY_VIÊN' as CouncilRole,
+            hasConflictOfInterest: false,
+            evaluationSubmitted: false,
+          },
+          ...(formData.member2Id
+            ? [
+                {
+                  id: `${councilId}-member-4`,
+                  councilId,
+                  userId: formData.member2Id,
+                  userFullName: formData.member2Name,
+                  academicTitle: 'Ủy viên thường trực',
+                  departmentName: 'Hội đồng Đạo đức Y sinh',
+                  roleInCouncil: 'ỦY_VIÊN' as CouncilRole,
+                  hasConflictOfInterest: false,
+                  evaluationSubmitted: false,
+                },
+              ]
+            : []),
+          ...(formData.member3Id
+            ? [
+                {
+                  id: `${councilId}-member-5`,
+                  councilId,
+                  userId: formData.member3Id,
+                  userFullName: formData.member3Name,
+                  academicTitle: 'Ủy viên thường trực',
+                  departmentName: 'Khoa Xét nghiệm',
+                  roleInCouncil: 'ỦY_VIÊN' as CouncilRole,
+                  hasConflictOfInterest: false,
+                  evaluationSubmitted: false,
+                },
+              ]
+            : []),
+        ];
+
+        const councilUpdate: Council = {
+          id: councilId,
           code: formData.code,
           name: formData.name,
           type: formData.type,
@@ -325,66 +394,10 @@ function CouncilsContent() {
           onlineMeetingUrl: formData.meetingFormat !== 'OFFLINE' ? formData.onlineMeetingUrl : undefined,
           sendInvitationNotification: formData.sendInvitationNotification,
           minPassRatio: 0.6,
-          status: isOfficialIssuance ? 'ESTABLISHED' : 'ESTABLISHED',
-          members: [
-            {
-              id: `m-${Date.now()}-1`,
-              councilId: `council-${Date.now()}`,
-              userId: formData.chairId,
-              userFullName: formData.chairName,
-              academicTitle: 'Chủ tịch Hội đồng',
-              departmentName: 'Ban Giám đốc Bệnh viện',
-              roleInCouncil: 'CHỦ_TỊCH',
-              hasConflictOfInterest: false,
-              evaluationSubmitted: false,
-            },
-            {
-              id: `m-${Date.now()}-2`,
-              councilId: `council-${Date.now()}`,
-              userId: formData.secretaryId,
-              userFullName: formData.secretaryName,
-              academicTitle: 'Thư ký khoa học',
-              departmentName: 'Phòng Quản lý NCKH',
-              roleInCouncil: 'THƯ_KÝ',
-              hasConflictOfInterest: false,
-              evaluationSubmitted: false,
-            },
-            {
-              id: `m-${Date.now()}-3`,
-              councilId: `council-${Date.now()}`,
-              userId: formData.member1Id,
-              userFullName: formData.member1Name,
-              academicTitle: 'Ủy viên thường trực',
-              departmentName: 'Khoa Hồi sức tích cực',
-              roleInCouncil: 'ỦY_VIÊN',
-              hasConflictOfInterest: false,
-              evaluationSubmitted: false,
-            },
-            {
-              id: `m-${Date.now()}-4`,
-              councilId: `council-${Date.now()}`,
-              userId: formData.member2Id,
-              userFullName: formData.member2Name,
-              academicTitle: 'Ủy viên thường trực',
-              departmentName: 'Hội đồng Đạo đức Y sinh',
-              roleInCouncil: 'ỦY_VIÊN',
-              hasConflictOfInterest: false,
-              evaluationSubmitted: false,
-            },
-            {
-              id: `m-${Date.now()}-5`,
-              councilId: `council-${Date.now()}`,
-              userId: formData.member3Id,
-              userFullName: formData.member3Name,
-              academicTitle: 'Ủy viên thường trực',
-              departmentName: 'Khoa Xét nghiệm',
-              roleInCouncil: 'ỦY_VIÊN',
-              hasConflictOfInterest: false,
-              evaluationSubmitted: false,
-            },
-          ],
+          status: 'ESTABLISHED',
           projectIds: formData.selectedProjectIds,
           projectAssignments: projectAssignmentsList,
+          members,
           scoringCriteriaSet: [
             { id: 'crit-1', name: 'Tính cấp thiết và tính mới của nghiên cứu', maxScore: 20 },
             { id: 'crit-2', name: 'Mục tiêu, đối tượng và phương pháp nghiên cứu', maxScore: 30 },
@@ -395,21 +408,81 @@ function CouncilsContent() {
           evaluationResults: [],
         };
 
-        repo.createCouncil(newCouncil);
-        setCouncils(repo.getCouncils());
-        setShowCreateModal(false);
-        setModalStep(1);
-
-        if (isOfficialIssuance) {
-          success(`Đã ban hành Quyết định & Thành lập Hội đồng ${newCouncil.code} thành công! Đã gửi giấy mời họp.`);
+        if (isEditMode && editingCouncilId) {
+          repo.updateCouncil(editingCouncilId, councilUpdate);
+          success(`Đã cập nhật Hội đồng ${councilUpdate.code} thành công!`);
         } else {
-          success(`Đã lưu Dự thảo Quyết định thành lập Hội đồng ${newCouncil.code}.`);
+          repo.createCouncil(councilUpdate);
+          success(isOfficialIssuance
+            ? `Đã ban hành Quyết định & Thành lập Hội đồng ${councilUpdate.code} thành công! Đã gửi giấy mời họp.`
+            : `Đã lưu Dự thảo Quyết định thành lập Hội đồng ${councilUpdate.code}.`);
         }
+
+        setCouncils(repo.getCouncils());
+        resetModalState();
       },
     });
   };
 
   const hasFilters = filterType !== 'ALL' || search.trim();
+  const isEditMode = Boolean(editingCouncilId);
+
+  const openEditCouncil = (council: Council) => {
+    const chair = council.members.find((m) => m.roleInCouncil === 'CHỦ_TỊCH');
+    const secretary = council.members.find((m) => m.roleInCouncil === 'THƯ_KÝ');
+    const otherMembers = council.members.filter((m) => m.roleInCouncil !== 'CHỦ_TỊCH' && m.roleInCouncil !== 'THƯ_KÝ');
+
+    const projectAssignments: Record<string, { reviewer1Id: string; reviewer1Name: string; reviewer2Id: string; reviewer2Name: string; notes: string }> = {};
+    (council.projectAssignments || []).forEach((assignment) => {
+      projectAssignments[assignment.projectId] = {
+        reviewer1Id: assignment.reviewer1Id || '',
+        reviewer1Name: assignment.reviewer1Name || '',
+        reviewer2Id: assignment.reviewer2Id || '',
+        reviewer2Name: assignment.reviewer2Name || '',
+        notes: assignment.notes || '',
+      };
+    });
+
+    setEditingCouncilId(council.id);
+    setFormData({
+      code: council.code,
+      name: council.name,
+      type: council.type,
+      specialtyCluster: council.specialtyCluster || SPECIALTY_CLUSTERS[0].name,
+      establishmentDecisionNumber: council.establishmentDecisionNumber || '',
+      decisionDate: council.decisionDate || '',
+      decisionStatus: council.decisionStatus === 'ISSUED' ? 'ISSUED' : 'DRAFT',
+      signatoryName: council.signatoryName || 'GS.TS.BS. Vũ Đình Khoa (Giám đốc Bệnh viện)',
+      signatoryRole: council.signatoryRole || 'Giám đốc Bệnh viện',
+      meetingDate: council.meetingDate,
+      meetingTime: council.meetingTime || '',
+      meetingFormat: council.meetingFormat || 'HYBRID',
+      location: council.location,
+      onlineMeetingUrl: council.onlineMeetingUrl || '',
+      sendInvitationNotification: council.sendInvitationNotification ?? true,
+      chairId: chair?.userId || '',
+      chairName: chair?.userFullName || '',
+      secretaryId: secretary?.userId || '',
+      secretaryName: secretary?.userFullName || '',
+      member1Id: otherMembers[0]?.userId || '',
+      member1Name: otherMembers[0]?.userFullName || '',
+      member2Id: otherMembers[1]?.userId || '',
+      member2Name: otherMembers[1]?.userFullName || '',
+      member3Id: otherMembers[2]?.userId || '',
+      member3Name: otherMembers[2]?.userFullName || '',
+      memberAbsentWithWrittenReview: false,
+      selectedProjectIds: council.projectIds,
+      projectAssignments,
+    });
+    setModalStep(1);
+    setShowCreateModal(true);
+  };
+
+  const resetModalState = () => {
+    setEditingCouncilId(null);
+    setModalStep(1);
+    setShowCreateModal(false);
+  };
 
   return (
     <div className="space-y-3 text-slate-800">
@@ -449,6 +522,7 @@ function CouncilsContent() {
         {['DIRECTOR', 'RESEARCH_OFFICE', 'ADMIN'].includes(currentUser.role) && (
           <button
             onClick={() => {
+              setEditingCouncilId(null);
               setModalStep(1);
               setShowCreateModal(true);
             }}
@@ -586,12 +660,22 @@ function CouncilsContent() {
                       </td>
                       <td className="px-5 py-3.5 text-center align-middle">
                         <div className="flex items-center justify-center gap-1.5">
+                          {['DIRECTOR', 'RESEARCH_OFFICE', 'ADMIN'].includes(currentUser.role) && (
+                            <button
+                              type="button"
+                              onClick={() => openEditCouncil(c)}
+                              title="Chỉnh sửa hội đồng"
+                              className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 transition shadow-2xs"
+                            >
+                              <PenTool className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <Link
                             href={`/councils/${c.id}`}
                             title="Workspace Chấm điểm & Lập Biên bản"
-                            className="px-2 py-1 bg-[#EBF4FC] hover:bg-[#D8ECF9] text-[#0A6EBD] rounded-lg border border-[#B8D7F5] font-semibold text-[11px] inline-flex items-center gap-1 transition"
+                            className="p-1.5 bg-[#EBF4FC] hover:bg-[#D8ECF9] text-[#0A6EBD] rounded-lg border border-[#B8D7F5] transition shadow-2xs"
                           >
-                            <Eye className="w-3.5 h-3.5" /> Workspace
+                            <Eye className="w-3.5 h-3.5" />
                           </Link>
                         </div>
                       </td>
@@ -626,20 +710,12 @@ function CouncilsContent() {
             {/* Header Modal */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 bg-sky-50 text-[#0A6EBD] border border-sky-200 rounded text-[11px] font-bold font-mono">
-                    TT 09/2024 & TT 43/2024/TT-BYT
-                  </span>
-                  <h2 className="text-[17px] font-bold text-slate-900">
-                    Thành lập Hội đồng Khoa học & Công nghệ Bệnh viện
-                  </h2>
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Lập quyết định thành lập, cơ cấu 05–07 thành viên và phân công phản biện độc lập chống xung đột lợi ích
-                </p>
+                <h2 className="text-[17px] font-bold text-slate-900">
+                  {isEditMode ? 'Chỉnh sửa thông tin Hội đồng' : 'Thêm hội đồng khoa học mới'}
+                </h2>
               </div>
               <button
-                onClick={() => setShowCreateModal(false)}
+                onClick={resetModalState}
                 className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition"
               >
                 <X className="w-5 h-5" />
@@ -817,33 +893,33 @@ function CouncilsContent() {
                       </select>
                     </div>
                     <div>
-                      <label className="block font-bold text-slate-700 mb-1">Ngày họp *</label>
+                      <label className="block font-bold text-slate-700 mb-1">Ngày họp</label>
                       <input
                         type="text"
                         value={formData.meetingDate}
                         onChange={(e) => setFormData({ ...formData, meetingDate: e.target.value })}
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-[13px]"
-                        required
+                        placeholder="VD: 15/03/2026"
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-[13px] bg-white"
                       />
                     </div>
                     <div>
-                      <label className="block font-bold text-slate-700 mb-1">Giờ họp *</label>
+                      <label className="block font-bold text-slate-700 mb-1">Giờ họp</label>
                       <input
                         type="text"
                         value={formData.meetingTime}
                         onChange={(e) => setFormData({ ...formData, meetingTime: e.target.value })}
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-[13px]"
-                        required
+                        placeholder="VD: 08:30"
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-[13px] bg-white"
                       />
                     </div>
                     <div>
-                      <label className="block font-bold text-slate-700 mb-1">Địa điểm phòng họp *</label>
+                      <label className="block font-bold text-slate-700 mb-1">Phòng họp / Địa điểm</label>
                       <input
                         type="text"
                         value={formData.location}
                         onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-[13px]"
-                        required
+                        placeholder="VD: Phòng họp Tầng 3"
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-[13px] bg-white"
                       />
                     </div>
                   </div>
@@ -886,9 +962,8 @@ function CouncilsContent() {
                   <div className="bg-sky-50 border border-sky-200 p-3 rounded-xl flex items-start gap-2.5">
                     <Users className="w-4 h-4 text-[#0A6EBD] shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-bold text-[#0A6EBD]">Cơ cấu Hội đồng thường trực (Toàn phiên họp)</p>
-                      <p className="text-slate-600 text-[11px] mt-0.5">
-                        Chủ tịch, Thư ký khoa học và các Ủy viên thường trực điều hành và chấm điểm chung cho toàn phiên họp. Phản biện 1 và 2 sẽ được phân công chuyên sâu theo từng đề tài ở Bước 3.
+                      <p className="text-slate-600 text-[11px] leading-relaxed">
+                        Hội đồng khoa học cấp cơ sở phải có <strong>tối thiểu 03 thành viên</strong> (bao gồm cả Chủ tịch Hội đồng thuộc Ban Giám đốc và Thư ký khoa học).
                       </p>
                     </div>
                   </div>
@@ -954,10 +1029,10 @@ function CouncilsContent() {
                     <div className="flex items-center justify-between">
                       <h4 className="font-bold text-slate-800 text-[13px] flex items-center gap-1.5">
                         <UserCheck className="w-4 h-4 text-emerald-600" />
-                        Các Ủy viên Hội đồng thường trực (03 thành viên)
+                        Các Ủy viên Hội đồng thường trực
                       </h4>
                       <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-bold">
-                        Tổng số thành viên: 05 (Số lẻ)
+                        Tổng số thành viên: {2 + (formData.member1Id ? 1 : 0) + (formData.member2Id ? 1 : 0) + (formData.member3Id ? 1 : 0)} (Tối thiểu 3)
                       </span>
                     </div>
 
@@ -974,7 +1049,7 @@ function CouncilsContent() {
                               member1Name: doc?.fullName || '',
                             });
                           }}
-                          className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-[13px] bg-white"
+                          className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-[13px] bg-white font-medium"
                         >
                           {doctorsList.map((d) => (
                             <option key={d.id} value={d.id}>
@@ -985,7 +1060,7 @@ function CouncilsContent() {
                       </div>
 
                       <div>
-                        <label className="block font-semibold text-slate-700 mb-1">Ủy viên 2 (Đạo đức/Dược) *</label>
+                        <label className="block font-semibold text-slate-700 mb-1">Ủy viên 2 (Không bắt buộc)</label>
                         <select
                           value={formData.member2Id}
                           onChange={(e) => {
@@ -996,8 +1071,9 @@ function CouncilsContent() {
                               member2Name: doc?.fullName || '',
                             });
                           }}
-                          className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-[13px] bg-white"
+                          className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-[13px] bg-white text-slate-800"
                         >
+                          <option value="">-- Không chỉ định --</option>
                           {doctorsList.map((d) => (
                             <option key={d.id} value={d.id}>
                               {d.fullName}
@@ -1007,7 +1083,7 @@ function CouncilsContent() {
                       </div>
 
                       <div>
-                        <label className="block font-semibold text-slate-700 mb-1">Ủy viên 3 (Cận lâm sàng) *</label>
+                        <label className="block font-semibold text-slate-700 mb-1">Ủy viên 3 (Không bắt buộc)</label>
                         <select
                           value={formData.member3Id}
                           onChange={(e) => {
@@ -1018,8 +1094,9 @@ function CouncilsContent() {
                               member3Name: doc?.fullName || '',
                             });
                           }}
-                          className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-[13px] bg-white"
+                          className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-[13px] bg-white text-slate-800"
                         >
+                          <option value="">-- Không chỉ định --</option>
                           {doctorsList.map((d) => (
                             <option key={d.id} value={d.id}>
                               {d.fullName}
@@ -1050,17 +1127,6 @@ function CouncilsContent() {
               {/* ========================================================================= */}
               {modalStep === 3 && (
                 <div className="space-y-4">
-                  <div className="bg-amber-50/80 border border-amber-200 p-3.5 rounded-xl flex items-start gap-2.5">
-                    <ShieldCheck className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-bold text-amber-900">
-                        Phân công Phản biện chuyên sâu & Chống Xung đột Lợi ích (Conflict of Interest)
-                      </p>
-                      <p className="text-amber-800 text-[11px] mt-0.5 leading-relaxed">
-                        Mỗi đề tài được phân công <strong>02 Bác sĩ / Chuyên gia phản biện độc lập</strong> theo đúng chuyên khoa. Hệ thống tự động kiểm tra và ngăn chặn các bác sĩ trùng với Chủ nhiệm đề tài hoặc thành viên nhóm nghiên cứu.
-                      </p>
-                    </div>
-                  </div>
 
                   {/* Danh sách đề tài */}
                   <div className="space-y-3">
@@ -1131,8 +1197,8 @@ function CouncilsContent() {
                                         <span>Phản biện 1 *</span>
                                       </label>
                                       {isRev1Conflict && (
-                                        <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
-                                          ⚠️ Xung đột lợi ích!
+                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                                          ⚠️ Đã có HĐ khác / Trùng lịch
                                         </span>
                                       )}
                                     </div>
@@ -1141,11 +1207,10 @@ function CouncilsContent() {
                                       onChange={(e) =>
                                         handleUpdateProjectReviewer(p.id, 'reviewer1', e.target.value)
                                       }
-                                      className={`w-full px-3 py-1.5 rounded-lg border text-[12px] bg-white font-medium ${
-                                        isRev1Conflict
-                                          ? 'border-rose-400 text-rose-700 bg-rose-50/50'
+                                      className={`w-full px-3 py-1.5 rounded-lg border text-[12px] bg-white font-medium ${isRev1Conflict
+                                          ? 'border-amber-400 text-amber-850 bg-amber-50/20'
                                           : 'border-slate-300 text-slate-800'
-                                      }`}
+                                        }`}
                                     >
                                       <option value="">-- Chọn Bác sĩ Phản biện 1 --</option>
                                       {doctorsList.map((d) => {
@@ -1154,17 +1219,16 @@ function CouncilsContent() {
                                           <option
                                             key={d.id}
                                             value={d.id}
-                                            disabled={isConflict}
-                                            className={isConflict ? 'text-rose-500 bg-rose-50 font-bold' : ''}
+                                            className={isConflict ? 'text-amber-700 bg-amber-50/50 font-semibold' : ''}
                                           >
-                                            {d.fullName} ({d.academicTitle}) {isConflict ? '[Trùng nhóm NC - Cấm]' : ''}
+                                            {d.fullName} ({d.academicTitle}) {isConflict ? '(Đã tham gia HĐ khác / Trùng lịch)' : ''}
                                           </option>
                                         );
                                       })}
                                     </select>
                                     {isRev1Conflict && (
-                                      <p className="text-[10px] text-rose-600 mt-1 font-semibold">
-                                        Bác sĩ là Chủ nhiệm hoặc thành viên đề tài này, không được phản biện!
+                                      <p className="text-[10px] text-amber-700 mt-1 font-semibold">
+                                        Lưu ý: Bác sĩ đã tham gia Hội đồng khác đợt này hoặc thuộc nhóm nghiên cứu đề tài.
                                       </p>
                                     )}
                                   </div>
@@ -1176,8 +1240,8 @@ function CouncilsContent() {
                                         <span>Phản biện 2 *</span>
                                       </label>
                                       {isRev2Conflict && (
-                                        <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
-                                          ⚠️ Xung đột lợi ích!
+                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                                          ⚠️ Đã có HĐ khác / Trùng lịch
                                         </span>
                                       )}
                                     </div>
@@ -1186,11 +1250,10 @@ function CouncilsContent() {
                                       onChange={(e) =>
                                         handleUpdateProjectReviewer(p.id, 'reviewer2', e.target.value)
                                       }
-                                      className={`w-full px-3 py-1.5 rounded-lg border text-[12px] bg-white font-medium ${
-                                        isRev2Conflict
-                                          ? 'border-rose-400 text-rose-700 bg-rose-50/50'
+                                      className={`w-full px-3 py-1.5 rounded-lg border text-[12px] bg-white font-medium ${isRev2Conflict
+                                          ? 'border-amber-400 text-amber-850 bg-amber-50/20'
                                           : 'border-slate-300 text-slate-800'
-                                      }`}
+                                        }`}
                                     >
                                       <option value="">-- Chọn Bác sĩ Phản biện 2 --</option>
                                       {doctorsList.map((d) => {
@@ -1199,17 +1262,16 @@ function CouncilsContent() {
                                           <option
                                             key={d.id}
                                             value={d.id}
-                                            disabled={isConflict}
-                                            className={isConflict ? 'text-rose-500 bg-rose-50 font-bold' : ''}
+                                            className={isConflict ? 'text-amber-700 bg-amber-50/50 font-semibold' : ''}
                                           >
-                                            {d.fullName} ({d.academicTitle}) {isConflict ? '[Trùng nhóm NC - Cấm]' : ''}
+                                            {d.fullName} ({d.academicTitle}) {isConflict ? '(Đã tham gia HĐ khác / Trùng lịch)' : ''}
                                           </option>
                                         );
                                       })}
                                     </select>
                                     {isRev2Conflict && (
-                                      <p className="text-[10px] text-rose-600 mt-1 font-semibold">
-                                        Bác sĩ là Chủ nhiệm hoặc thành viên đề tài này, không được phản biện!
+                                      <p className="text-[10px] text-amber-700 mt-1 font-semibold">
+                                        Lưu ý: Bác sĩ đã tham gia Hội đồng khác đợt này hoặc thuộc nhóm nghiên cứu đề tài.
                                       </p>
                                     )}
                                   </div>
@@ -1254,7 +1316,7 @@ function CouncilsContent() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={resetModalState}
                   className="px-3.5 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold text-xs transition"
                 >
                   Hủy bỏ
@@ -1280,12 +1342,7 @@ function CouncilsContent() {
                     <button
                       type="button"
                       onClick={() => handleSaveCouncil(true)}
-                      disabled={hasAnyConflict}
-                      className={`px-4 py-1.5 rounded-lg text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition ${
-                        hasAnyConflict
-                          ? 'bg-slate-400 cursor-not-allowed'
-                          : 'bg-emerald-600 hover:bg-emerald-700'
-                      }`}
+                      className="px-4 py-1.5 rounded-lg text-white font-bold text-xs shadow-xs flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 transition"
                     >
                       <Send className="w-3.5 h-3.5" /> Ban hành QĐ & Gửi Giấy mời
                     </button>

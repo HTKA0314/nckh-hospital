@@ -83,7 +83,7 @@ export function getManagementLevelDisplayName(level: string): string {
   switch (level) {
     case 'CẤP_CƠ_SỞ':
       return 'Cấp cơ sở (Bệnh viện)';
-    case 'CẤP_TỈNH_THÀNH_PHỐ':
+    case 'CẤP_TỈNH':
       return 'Cấp Tỉnh / Thành phố';
     case 'CẤP_BỘ':
       return 'Cấp Bộ Y tế';

@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { repo } from '@/lib/repository';
 import { useAuth } from '@/lib/auth-context';
-import { DocumentVersion } from '@/lib/types';
+import { DocumentVersion, SubmissionVersion } from '@/lib/types';
+import { canSubmitResubmission } from '@/lib/utils/permissions';
 import {
   ArrowLeft,
   Upload,
@@ -15,6 +16,7 @@ import {
   Save,
   Clock,
 } from 'lucide-react';
+import { ProposalStatus } from '@/lib/constants/statuses';
 
 export default function ResubmitProjectPage() {
   const router = useRouter();
@@ -37,6 +39,18 @@ export default function ResubmitProjectPage() {
     );
   }
 
+  if (!canSubmitResubmission(currentUser, project)) {
+    return (
+      <div className="text-center py-12 text-slate-500 bg-white rounded-md border border-[#D8DEE6]">
+        <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+        <p className="font-bold text-slate-800">Bạn không có quyền nộp lại hồ sơ cho đề tài này.</p>
+      </div>
+    );
+  }
+
+  const submissionVersions = project.submissionVersions ?? [];
+  const nextVersionNo = submissionVersions.length + 1;
+
   // Lấy ý kiến thẩm định gần nhất
   const lastReviewHistory = [...project.statusHistory]
     .reverse()
@@ -49,8 +63,26 @@ export default function ResubmitProjectPage() {
       return;
     }
 
+    const newSubmissionVersion: SubmissionVersion = {
+      id: `submission-${Date.now()}`,
+      projectId: project.id,
+      versionNo: nextVersionNo,
+      submittedAt: new Date().toLocaleString('vi-VN'),
+      submittedBy: currentUser.id,
+      submittedByName: currentUser.fullName,
+      changeSummary: revisionNotes,
+      isCurrent: true,
+      status: 'ACTIVE',
+      structuredDataSnapshot: {
+        proposalStatus: ProposalStatus.RESUBMITTED,
+        title: project.title,
+        updatedAt: new Date().toISOString(),
+      },
+      documents: [],
+    };
+
     // Cập nhật tài liệu bản v2.0
-    const updatedDocs = project.documents.map((doc) => {
+    const updatedDocs = (project.documents || []).map((doc) => {
       if (doc.documentType === 'DETAILED_OUTLINE') {
         const nextVer = doc.currentVersion + 1;
         const newVer: DocumentVersion = {
@@ -80,35 +112,43 @@ export default function ResubmitProjectPage() {
       return doc;
     });
 
+    const submissionDocuments = updatedDocs.flatMap((doc) => doc.versions.filter((version) => version.isCurrent));
+
+    // Use repository helper to add submission version (adds audit log and notifies Research Office)
+    const added = repo.addSubmissionVersion(project.id, {
+      ...newSubmissionVersion,
+      documents: submissionDocuments,
+    });
+
+    // Update project record with new documents and proposalStatus + history
     const updated = repo.updateProject(project.id, {
-      proposalStatus: 'RESUBMITTED',
+      proposalStatus: ProposalStatus.RESUBMITTED,
       documents: updatedDocs,
       statusHistory: [
         ...project.statusHistory,
         {
           id: `h-${Date.now()}`,
           projectId: project.id,
-          fromStatus: 'REVISION_REQUIRED',
-          toStatus: 'RESUBMITTED',
+          fromStatus: ProposalStatus.REVISION_REQUIRED,
+          toStatus: ProposalStatus.RESUBMITTED,
           changedBy: currentUser.id,
           changedByName: currentUser.fullName,
           userRole: currentUser.role,
           changedAt: new Date().toLocaleString('vi-VN'),
-          action: 'Nộp lại hồ sơ đề xuất sau bổ sung (v2.0)',
+          action: 'Nộp lại hồ sơ đề xuất sau bổ sung',
           comment: revisionNotes,
         },
       ],
     });
 
-    if (updated) {
-      repo.addAuditLog({
+    if (added && updated) {
+      // Notify principal investigator that resubmission succeeded (redundant but explicit)
+      repo.addNotification({
         userId: currentUser.id,
-        userName: currentUser.fullName,
-        userRole: currentUser.role,
-        action: 'RESUBMIT_PROPOSAL',
-        entityType: 'ResearchProject',
-        entityId: project.id,
-        details: `Chủ nhiệm đề tài ${currentUser.fullName} đã nộp lại hồ sơ đề tài ${project.proposalCode} sau bổ sung chỉnh sửa.`,
+        title: `Đã nộp lại hồ sơ: ${project.proposalCode}`,
+        content: `Bạn đã nộp lại hồ sơ đề tài ${project.title} (Phiên bản ${added.versionNo}). Phòng NCKH sẽ thẩm định lại.`,
+        type: 'SUCCESS',
+        link: `/projects/${project.id}`,
       });
 
       alert('Đã nộp lại hồ sơ đề tài thành công! Chuyên viên NCKH sẽ thẩm định lại.');
@@ -127,7 +167,7 @@ export default function ResubmitProjectPage() {
           <ArrowLeft className="w-3.5 h-3.5" /> Quay lại Chi tiết đề tài
         </Link>
         <span className="text-xs font-bold px-2 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200">
-          Quy trình Bổ sung Hồ sơ
+          Phiên bản nộp lại v{nextVersionNo}
         </span>
       </div>
 
@@ -153,6 +193,27 @@ export default function ResubmitProjectPage() {
             Yêu cầu ngày: {lastReviewHistory?.changedAt} bởi {lastReviewHistory?.changedByName}
           </span>
         </div>
+
+        {/* Lịch sử nộp lại */}
+        {submissionVersions.length > 0 && (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-2">
+            <div className="text-[12px] font-bold uppercase tracking-wide text-slate-600">
+              Lịch sử bản nộp lại
+            </div>
+            <div className="space-y-2">
+              {submissionVersions.slice().reverse().map((version) => (
+                <div key={version.id} className="rounded-md border border-slate-200 bg-white p-2.5 text-[12px]">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-slate-800">Bản v{version.versionNo}</span>
+                    <span className="text-slate-500">{version.submittedAt}</span>
+                  </div>
+                  <p className="text-slate-600 mt-1">{version.changeSummary || 'Không có ghi chú giải trình'}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">Người nộp: {version.submittedByName}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Form nộp lại */}
         <form onSubmit={handleResubmit} className="space-y-3">

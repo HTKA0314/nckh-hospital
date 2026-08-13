@@ -7,6 +7,8 @@ import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate, formatVND } from '@/lib/utils';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { PageHeader } from '@/components/common/PageHeader';
+import { TableEmptyState } from '@/components/common/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import {
   Activity,
@@ -61,57 +63,58 @@ export default function ProgressWorkspacePage() {
 
   return (
     <div className="space-y-3 text-slate-800">
-      {/* ── Toolbar: Search + Actions trên 1 hàng ── */}
-      <div className="flex items-center gap-2.5">
+      {/* ── HEADER: Tiêu đề trang + Actions ── */}
+      <PageHeader
+        title="Theo dõi Tiến độ & Báo cáo"
+        description="Quản lý mốc kiểm tra, tiến độ thực hiện và phê duyệt báo cáo định kỳ các đề tài"
+        actions={
+          <>
+            <button
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[13px] font-semibold shadow-xs transition whitespace-nowrap"
+            >
+              <Printer className="w-3.5 h-3.5" /> In danh mục
+            </button>
+            {currentUser.role === 'RESEARCHER' && (
+              <button
+                onClick={() => setReportModalOpen(true)}
+                className="inline-flex items-center gap-1.5 bg-[#0A6EBD] hover:bg-[#085896] text-white font-semibold px-3.5 py-2 rounded-lg text-[13px] shadow-xs transition whitespace-nowrap"
+              >
+                <Plus className="w-3.5 h-3.5" /> Nộp báo cáo tiến độ kỳ mới
+              </button>
+            )}
+          </>
+        }
+      />
+
+      {/* ── Filter Bar ── */}
+      <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs px-4 py-2.5 flex flex-wrap items-center gap-2.5">
+        <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+
         {/* Search */}
-        <div className="relative flex-1 max-w-lg">
+        <div className="relative w-full sm:w-72">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Tìm theo mã đề tài, tên nghiên cứu, chủ nhiệm..."
+            placeholder="Tìm mã đề tài, tên, chủ nhiệm..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-8 py-2 rounded-lg border border-slate-300 focus:border-[#0A6EBD] focus:ring-1 focus:ring-[#0A6EBD] text-[13px] outline-none bg-white shadow-xs"
+            className="w-full pl-9 pr-8 py-1.5 rounded-lg border border-slate-300 focus:border-[#0A6EBD] focus:ring-1 focus:ring-[#0A6EBD] text-xs outline-none bg-white transition"
           />
           {search && (
             <button
               onClick={() => setSearch('')}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-3 h-3" />
             </button>
           )}
         </div>
 
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Actions */}
-        <button
-          onClick={() => window.print()}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[13px] font-semibold shadow-xs transition whitespace-nowrap"
-        >
-          <Printer className="w-3.5 h-3.5" /> In danh mục
-        </button>
-
-        {currentUser.role === 'RESEARCHER' && (
-          <button
-            onClick={() => setReportModalOpen(true)}
-            className="inline-flex items-center gap-1.5 bg-[#0A6EBD] hover:bg-[#085896] text-white font-semibold px-3.5 py-2 rounded-lg text-[13px] shadow-xs transition whitespace-nowrap"
-          >
-            <Plus className="w-3.5 h-3.5" /> Nộp báo cáo tiến độ kỳ mới
-          </button>
-        )}
-      </div>
-
-      {/* ── Filter Bar ── */}
-      <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs px-4 py-2.5 flex flex-wrap items-center gap-2.5">
-        <Filter className="w-4 h-4 text-slate-400 shrink-0" />
-
         <select
           value={selectedDept}
           onChange={(e) => setSelectedDept(e.target.value)}
-          className={`py-1.5 px-3 rounded-lg border text-[13px] font-medium outline-none transition ${
+          className={`py-1.5 px-3 rounded-lg border text-xs font-medium outline-none transition cursor-pointer ${
             selectedDept !== 'ALL'
               ? 'border-[#0A6EBD] text-[#0A6EBD] bg-[#EBF4FC]'
               : 'border-slate-300 bg-white text-slate-600'
@@ -128,7 +131,7 @@ export default function ProgressWorkspacePage() {
         {hasFilters && (
           <button
             onClick={() => { setSelectedDept('ALL'); setSearch(''); }}
-            className="text-[12px] text-rose-500 hover:text-rose-700 font-semibold flex items-center gap-1 transition"
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-100 transition-all shadow-2xs cursor-pointer animate-in fade-in"
           >
             <X className="w-3 h-3" /> Xóa bộ lọc
           </button>
@@ -156,11 +159,11 @@ export default function ProgressWorkspacePage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredProjects.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
-                    Không có đề tài nào phù hợp tiêu chí lọc.
-                  </td>
-                </tr>
+                <TableEmptyState
+                  colSpan={7}
+                  title="Không có đề tài nào"
+                  description="Không tìm thấy đề tài nào phù hợp với bộ lọc."
+                />
               ) : (
                 pagedProjects.map((p) => {
                   return (
@@ -209,13 +212,14 @@ export default function ProgressWorkspacePage() {
                             <div
                               className={`h-full rounded-full transition-all ${
                                 p.status === 'ACCEPTED'
-                                  ? 'bg-emerald-500 w-full'
-                                  : 'bg-[#0A6EBD] w-[65%]'
+                                  ? 'bg-emerald-500'
+                                  : 'bg-[#0A6EBD]'
                               }`}
+                              style={{ width: `${p.progressPercentage || 0}%` }}
                             />
                           </div>
                           <span className="font-mono font-bold text-xs text-slate-700 w-9 text-right">
-                            {p.status === 'ACCEPTED' ? '100%' : '65%'}
+                            {p.status === 'ACCEPTED' ? '100%' : `${p.progressPercentage || 0}%`}
                           </span>
                         </div>
                       </td>
@@ -227,13 +231,13 @@ export default function ProgressWorkspacePage() {
                         </span>
                       </td>
 
-                      {/* Thao tác (Eye) */}
+                      {/* Thao tác (Eye + Text) */}
                       <td className="px-4 py-3 text-center align-middle">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => setDetailProjectModal(p)}
                             title="Xem mốc tiến độ & lịch sử báo cáo"
-                            className="p-1.5 bg-[#EBF4FC] hover:bg-[#D8ECF9] text-[#0A6EBD] rounded-lg border border-[#B8D7F5] transition"
+                            className="p-1.5 bg-[#EBF4FC] hover:bg-[#D8ECF9] text-[#0A6EBD] rounded-lg border border-[#B8D7F5] transition shadow-2xs"
                           >
                             <Eye className="w-4 h-4" />
                           </button>

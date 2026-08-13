@@ -24,7 +24,15 @@ module.exports = {
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
       },
+      boxShadow: {
+        'xs':   '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+        '2xs':  '0 1px 2px 0 rgb(0 0 0 / 0.03)',
+        '3xs':  '0 1px 1px 0 rgb(0 0 0 / 0.02)',
+      },
+      backdropBlur: {
+        'xs': '2px',
+      },
     },
   },
-  plugins: [],
+  plugins: [require('tailwindcss-animate')],
 };

@@ -75,89 +75,91 @@ export default function TemplatesPage() {
 
   return (
     <div className="space-y-3 text-slate-800">
-      {/* ── Toolbar: Search + Mode Switcher + Actions trên 1 hàng ── */}
-      <div className="flex items-center gap-2.5">
-        {/* Search */}
-        <div className="relative flex-1 max-w-lg">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Tìm theo tên biểu mẫu, mã số (BM-01...), căn cứ pháp lý..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="w-full pl-9 pr-8 py-2 rounded-lg border border-slate-300 focus:border-[#0A6EBD] focus:ring-1 focus:ring-[#0A6EBD] text-[13px] outline-none bg-white shadow-xs"
-          />
-          {searchTerm && (
+      {/* ── HEADER: Tiêu đề trang + Actions ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4 select-none">
+        <div>
+          <h1 className="text-base font-bold text-slate-800">Kho tài liệu & Biểu mẫu</h1>
+          <p className="text-[12px] text-slate-500 mt-0.5">Hệ thống biểu mẫu, văn bản hướng dẫn và căn cứ pháp lý về hoạt động Nghiên cứu Khoa học</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {/* View Mode Switcher */}
+          <div className="flex items-center border border-slate-300 rounded-lg p-0.5 bg-slate-50 shrink-0">
             <button
-              onClick={() => setSearchTerm('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              onClick={() => setViewMode('grid')}
+              className={`p-1.5 rounded-md text-xs font-medium transition ${
+                viewMode === 'grid'
+                  ? 'bg-white text-[#0A6EBD] shadow-2xs font-semibold'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Chế độ Thẻ (Grid View)"
             >
-              <X className="w-3.5 h-3.5" />
+              <LayoutGrid className="w-4 h-4" />
             </button>
-          )}
-        </div>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 rounded-md text-xs font-medium transition ${
+                viewMode === 'table'
+                  ? 'bg-white text-[#0A6EBD] shadow-2xs font-semibold'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Chế độ Bảng (Table View)"
+            >
+              <List className="w-4 h-4" />
+            </button>
+          </div>
 
-        {/* View Mode Switcher */}
-        <div className="flex items-center border border-slate-300 rounded-lg p-0.5 bg-slate-50 shrink-0">
           <button
-            onClick={() => setViewMode('grid')}
-            className={`p-1.5 rounded-md text-xs font-medium transition ${
-              viewMode === 'grid'
-                ? 'bg-white text-[#0A6EBD] shadow-2xs font-semibold'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-            title="Chế độ Thẻ (Grid View)"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[13px] font-semibold shadow-xs transition whitespace-nowrap"
           >
-            <LayoutGrid className="w-4 h-4" />
+            <Printer className="w-3.5 h-3.5" /> In Danh mục
           </button>
+
           <button
-            onClick={() => setViewMode('table')}
-            className={`p-1.5 rounded-md text-xs font-medium transition ${
-              viewMode === 'table'
-                ? 'bg-white text-[#0A6EBD] shadow-2xs font-semibold'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-            title="Chế độ Bảng (Table View)"
+            onClick={handleDownloadAll}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0A6EBD] hover:bg-[#085896] text-white text-[13px] font-semibold shadow-xs transition whitespace-nowrap"
           >
-            <List className="w-4 h-4" />
+            <FolderDown className="w-4 h-4" /> Tải Trọn Bộ (ZIP)
           </button>
         </div>
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Actions */}
-        <button
-          onClick={() => window.print()}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[13px] font-semibold shadow-xs transition whitespace-nowrap"
-        >
-          <Printer className="w-3.5 h-3.5" /> In Danh mục
-        </button>
-
-        <button
-          onClick={handleDownloadAll}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0A6EBD] hover:bg-[#085896] text-white text-[13px] font-semibold shadow-xs transition whitespace-nowrap"
-        >
-          <FolderDown className="w-4 h-4" /> Tải Trọn Bộ (ZIP)
-        </button>
       </div>
 
       {/* ── Filter Bar ── */}
       <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs px-4 py-2.5 flex flex-wrap items-center gap-2.5">
         <Filter className="w-4 h-4 text-slate-400 shrink-0" />
 
+        {/* Search */}
+        <div className="relative w-full sm:w-64">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Tìm biểu mẫu, mã số..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="w-full pl-9 pr-8 py-1.5 rounded-lg border border-slate-300 focus:border-[#0A6EBD] focus:ring-1 focus:ring-[#0A6EBD] text-xs outline-none bg-white transition"
+          />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-655"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
         {/* Quick Category Buttons */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
           {[
-            { id: 'ALL', label: 'Tất cả biểu mẫu' },
+            { id: 'ALL', label: 'Tất cả' },
             { id: 'PROPOSAL', label: 'Đăng ký & Thuyết minh' },
-            { id: 'ETHICS', label: 'Đạo đức Y sinh (IRB)' },
-            { id: 'COUNCIL', label: 'Hội đồng & Thẩm định' },
+            { id: 'ETHICS', label: 'Đạo đức IRB' },
+            { id: 'COUNCIL', label: 'Hội đồng' },
             { id: 'PROGRESS_FINANCE', label: 'Tiến độ & Tài chính' },
-            { id: 'ACCEPTANCE', label: 'Hội đồng Nghiệm thu' },
+            { id: 'ACCEPTANCE', label: 'Nghiệm thu' },
           ].map((cat) => (
             <button
               key={cat.id}
@@ -165,7 +167,7 @@ export default function TemplatesPage() {
                 setSelectedCategory(cat.id);
                 setCurrentPage(1);
               }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+              className={`px-2 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                 selectedCategory === cat.id
                   ? 'bg-sky-50 text-[#0A6EBD] border border-sky-200 shadow-2xs'
                   : 'text-slate-600 hover:bg-slate-50 border border-transparent'
@@ -176,7 +178,7 @@ export default function TemplatesPage() {
           ))}
         </div>
 
-        <div className="h-4 w-px bg-slate-200 hidden md:block" />
+        <div className="h-4 w-px bg-slate-200 hidden lg:block" />
 
         {/* Format Selector */}
         <select
@@ -185,7 +187,7 @@ export default function TemplatesPage() {
             setSelectedFormat(e.target.value);
             setCurrentPage(1);
           }}
-          className={`py-1.5 px-2.5 rounded-lg border text-xs font-medium outline-none transition ${
+          className={`py-1.5 px-2.5 rounded-lg border text-xs font-medium outline-none transition cursor-pointer ${
             selectedFormat !== 'ALL'
               ? 'border-[#0A6EBD] text-[#0A6EBD] bg-[#EBF4FC]'
               : 'border-slate-300 bg-white text-slate-600'
@@ -199,22 +201,25 @@ export default function TemplatesPage() {
 
         {/* Legal Ref Selector */}
         <select
+          aria-label="Bộ lọc Căn cứ pháp lý"
           value={selectedLegalRef}
           onChange={(e) => {
             setSelectedLegalRef(e.target.value);
             setCurrentPage(1);
           }}
-          className={`py-1.5 px-2.5 rounded-lg border text-xs font-medium outline-none transition ${
+          className={`py-1.5 px-2.5 rounded-lg border text-xs font-semibold outline-none transition cursor-pointer ${
             selectedLegalRef !== 'ALL'
               ? 'border-[#0A6EBD] text-[#0A6EBD] bg-[#EBF4FC]'
               : 'border-slate-300 bg-white text-slate-600'
           }`}
         >
-          <option value="ALL">Căn cứ: Tất cả quy định</option>
-          <option value="09/2024">Thông tư 09/2024/TT-BYT</option>
-          <option value="43/2024">Thông tư 43/2024/TT-BYT (IRB)</option>
-          <option value="Tài chính">Quy chế Tài chính Bệnh viện</option>
-          <option value="ISO">Quy trình ISO Quản lý NCKH</option>
+          <option value="ALL">Căn cứ: Tất cả</option>
+          <option value="37/2010">TT 37/2010/TT-BYT</option>
+          <option value="14/2014">TT 14/2014/TT-BKHCN</option>
+          <option value="03/2017">TT 03/2017/TT-BKHCN</option>
+          <option value="11/2014">TT 11/2014/TT-BKHCN</option>
+          <option value="04/2015">TT 04/2015/TT-BKHCN</option>
+          <option value="43/2024">TT 43/2024/TT-BYT</option>
         </select>
 
         {hasFilters && (
@@ -226,7 +231,7 @@ export default function TemplatesPage() {
               setSearchTerm('');
               setCurrentPage(1);
             }}
-            className="text-[12px] text-rose-500 hover:text-rose-700 font-semibold flex items-center gap-1 transition"
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-100 transition-all shadow-2xs cursor-pointer"
           >
             <X className="w-3 h-3" /> Xóa bộ lọc
           </button>

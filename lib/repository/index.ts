@@ -7,6 +7,10 @@ import {
   AuditLog,
   Notification,
   Role,
+  Decision,
+  ChangeRequest,
+  WorkflowPolicy,
+  SubmissionVersion,
 } from '@/lib/types';
 import {
   SEED_DEPARTMENTS,
@@ -14,6 +18,8 @@ import {
   SEED_REGISTRATION_ROUNDS,
   SEED_PROJECTS,
   SEED_COUNCILS,
+  SEED_WORKFLOW_POLICIES,
+  SEED_DECISIONS,
 } from '@/lib/mock-data/seed-data';
 
 // ==========================================
@@ -25,7 +31,14 @@ class MockRepository {
   private departments: Department[] = [...SEED_DEPARTMENTS];
   private users: User[] = [...SEED_USERS];
   private rounds: RegistrationRound[] = [...SEED_REGISTRATION_ROUNDS];
-  private projects: ResearchProject[] = [...SEED_PROJECTS];
+  private policies: WorkflowPolicy[] = [...SEED_WORKFLOW_POLICIES];
+  private projects: ResearchProject[] = SEED_PROJECTS.map((p) => ({
+    ...p,
+    workflowPolicyId: p.workflowPolicyId || 'policy-a',
+    projectCategory: p.projectCategory || 'CAP_CO_SO',
+    acceptanceAuthority: p.acceptanceAuthority || 'BENH_VIEN',
+    scientificReviewStatus: p.scientificReviewStatus || 'REQUIRED',
+  }));
   private councils: Council[] = [...SEED_COUNCILS];
   private notifications: Notification[] = [
     {
@@ -62,16 +75,18 @@ class MockRepository {
   private auditLogs: AuditLog[] = [
     {
       id: 'log-01',
+      timestamp: '25/03/2025 16:00',
       userId: 'user-10',
-      userName: 'GS.TS.BS. Vũ Đình Khoa',
+      userFullName: 'GS.TS.BS. Vũ Đình Khoa',
       userRole: 'DIRECTOR',
-      action: 'APPROVE_DECISION',
-      entityType: 'Decision',
+      actionCode: 'APPROVE_DECISION',
+      entityType: 'DECISION',
       entityId: 'dec-01',
-      details: 'Ký phê duyệt Quyết định giao thực hiện đề tài DT-2025-001',
-      createdAt: '25/03/2025 16:00',
+      notes: 'Ký phê duyệt Quyết định giao thực hiện đề tài DT-2025-001',
     },
   ];
+
+  private decisions: Decision[] = [...SEED_DECISIONS];
 
   // 1. Projects
   getProjects(filters?: {
@@ -135,6 +150,80 @@ class MockRepository {
     if (idx === -1) return undefined;
     this.projects[idx] = { ...this.projects[idx], ...updates };
     return this.projects[idx];
+  }
+
+  // SubmissionVersion helpers
+  getSubmissionVersions(projectId: string): SubmissionVersion[] {
+    const p = this.getProjectById(projectId);
+    return p?.submissionVersions ? [...p.submissionVersions] : [];
+  }
+
+  getCurrentSubmissionVersion(projectId: string): SubmissionVersion | undefined {
+    const p = this.getProjectById(projectId);
+    return p?.submissionVersions?.find((v) => v.isCurrent);
+  }
+
+  addSubmissionVersion(projectId: string, sv: SubmissionVersion): SubmissionVersion | undefined {
+    const p = this.getProjectById(projectId);
+    if (!p) return undefined;
+
+    // Mark existing versions as not current
+    const existing = p.submissionVersions || [];
+    const updatedExisting = existing.map((v) => ({ ...v, isCurrent: false }));
+
+    const newSv = { ...sv, isCurrent: true } as SubmissionVersion;
+    p.submissionVersions = [newSv, ...updatedExisting];
+
+    // Persist back
+    this.updateProject(projectId, { submissionVersions: p.submissionVersions });
+
+    // Audit log
+    this.addAuditLog({
+      userId: sv.submittedBy,
+      userFullName: sv.submittedByName,
+      userRole: (this.getUserById(sv.submittedBy)?.role as Role) || 'RESEARCHER',
+      actionCode: 'ADD_SUBMISSION_VERSION',
+      entityType: 'SUBMISSION_VERSION',
+      entityId: sv.id,
+      notes: `Nộp bản nộp lại v${sv.versionNo} cho đề tài ${projectId}`,
+    });
+
+    // Notify Research Office users
+    this.users
+      .filter((u) => u.role === 'RESEARCH_OFFICE')
+      .forEach((u) => {
+        this.addNotification({
+          userId: u.id,
+          title: `Đã có nộp lại hồ sơ: ${p.proposalCode}`,
+          content: `Đề tài ${p.proposalCode} vừa nộp lại phiên bản ${sv.versionNo}. Vui lòng thẩm định.`,
+          type: 'INFO',
+          link: `/projects/${projectId}`,
+        });
+      });
+
+    return newSv;
+  }
+
+  markSubmissionVersionSuperseded(projectId: string, versionId: string): boolean {
+    const p = this.getProjectById(projectId);
+    if (!p || !p.submissionVersions) return false;
+    let changed = false;
+    p.submissionVersions = p.submissionVersions.map((v) => {
+      if (v.id === versionId && v.isCurrent) {
+        changed = true;
+        return { ...v, isCurrent: false, status: 'SUPERSEDED' } as SubmissionVersion;
+      }
+      return v;
+    });
+    if (changed) this.updateProject(projectId, { submissionVersions: p.submissionVersions });
+    return changed;
+  }
+
+  deleteProject(id: string): boolean {
+    const idx = this.projects.findIndex((p) => p.id === id);
+    if (idx === -1) return false;
+    this.projects.splice(idx, 1);
+    return true;
   }
 
   // 2. Registration Rounds
@@ -215,18 +304,83 @@ class MockRepository {
     return newNotif;
   }
 
-  addAuditLog(log: Omit<AuditLog, 'id' | 'createdAt'>): AuditLog {
+  addAuditLog(log: Omit<AuditLog, 'id' | 'timestamp'>): AuditLog {
     const newLog: AuditLog = {
       ...log,
       id: `log-${Date.now()}`,
-      createdAt: new Date().toLocaleString('vi-VN'),
+      timestamp: new Date().toLocaleString('vi-VN'),
     };
     this.auditLogs.unshift(newLog);
     return newLog;
   }
 
+  // 6. ChangeRequests, and Ethics
+
+  updateDecision(id: string, updates: Partial<Decision>): Decision | undefined {
+    // Cập nhật trong mảng decisions top-level
+    const decIdx = this.decisions.findIndex((d) => d.id === id);
+    if (decIdx !== -1) {
+      this.decisions[decIdx] = { ...this.decisions[decIdx], ...updates };
+    }
+    
+    // Cập nhật trong projects
+    let foundDec: Decision | undefined;
+    this.projects.forEach((p) => {
+      if (p.decisions) {
+        const idx = p.decisions.findIndex((d) => d.id === id);
+        if (idx !== -1) {
+          p.decisions[idx] = { ...p.decisions[idx], ...updates };
+          foundDec = p.decisions[idx];
+        }
+      }
+    });
+    return foundDec || (decIdx !== -1 ? this.decisions[decIdx] : undefined);
+  }
+
+  createDecision(decision: Decision): Decision {
+    this.decisions.push(decision);
+    const project = this.projects.find(p => p.id === decision.projectId);
+    if (project) {
+      if (!project.decisions) project.decisions = [];
+      project.decisions.push(decision);
+    }
+    return decision;
+  }
+
+  getChangeRequests(): ChangeRequest[] {
+    const list: ChangeRequest[] = [];
+    this.projects.forEach((p) => {
+      if (p.changeRequests) {
+        list.push(...p.changeRequests);
+      }
+    });
+    return list;
+  }
+
+  updateChangeRequest(id: string, updates: Partial<ChangeRequest>): ChangeRequest | undefined {
+    let foundCr: ChangeRequest | undefined;
+    this.projects.forEach((p) => {
+      if (p.changeRequests) {
+        const idx = p.changeRequests.findIndex((cr) => cr.id === id);
+        if (idx !== -1) {
+          p.changeRequests[idx] = { ...p.changeRequests[idx], ...updates };
+          foundCr = p.changeRequests[idx];
+        }
+      }
+    });
+    return foundCr;
+  }
+
   getAuditLogs(): AuditLog[] {
     return [...this.auditLogs];
+  }
+
+  getPolicies(): WorkflowPolicy[] {
+    return [...this.policies];
+  }
+
+  getPolicyById(id: string): WorkflowPolicy | undefined {
+    return this.policies.find((p) => p.id === id);
   }
 
   // Helper KPI Stats cho Dashboard
@@ -238,7 +392,7 @@ class MockRepository {
       totalProjects: all.length,
       underReviewProposals: all.filter((p) => p.proposalStatus === 'UNDER_ADMIN_REVIEW' || p.proposalStatus === 'SUBMITTED').length,
       revisionRequiredProposals: all.filter((p) => p.proposalStatus === 'REVISION_REQUIRED').length,
-      waitingCouncil: all.filter((p) => p.status === 'PROPOSAL_APPROVED' || (p.proposalStatus === 'VALID' && p.status === 'DRAFT')).length,
+      waitingCouncil: all.filter((p) => (p.status as any) === 'APPROVED' || p.status === 'WAITING_ASSIGNMENT').length,
       inProgressProjects: all.filter((p) => p.status === 'IN_PROGRESS').length,
       delayedProjects: all.filter((p) => p.status === 'IN_PROGRESS' && p.progressPercentage < 50).length,
       waitingAcceptance: all.filter((p) => p.acceptanceDossier && p.acceptanceDossier.status === 'SUBMITTED').length,
@@ -247,7 +401,28 @@ class MockRepository {
       myInProgressCount: myProjects.filter((p) => p.status === 'IN_PROGRESS').length,
     };
   }
+
+  // ==========================================
+  // DECISIONS
+  // ==========================================
+  getDecisions(filters?: {
+    type?: 'ASSIGNMENT' | 'RECOGNITION';
+    status?: Decision['status'];
+    projectId?: string;
+  }): Decision[] {
+    let result = [...this.decisions];
+    if (filters) {
+      if (filters.type) result = result.filter((d) => d.type === filters.type);
+      if (filters.status) result = result.filter((d) => d.status === filters.status);
+      if (filters.projectId) result = result.filter((d) => d.projectId === filters.projectId);
+    }
+    // Sort by createdAt desc
+    return result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  getDecisionById(id: string): Decision | undefined {
+    return this.decisions.find((d) => d.id === id);
+  }
 }
 
-// Export singleton instance
 export const repo = new MockRepository();

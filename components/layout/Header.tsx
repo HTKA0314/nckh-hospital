@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { repo } from '@/lib/repository';
 import { Role } from '@/lib/types';
@@ -19,7 +19,7 @@ import {
 
 /* Bảng nhãn trang theo pathname */
 const PAGE_LABELS: Record<string, { title: string; breadcrumb: string[] }> = {
-  '/': { title: 'Bảng điều hành', breadcrumb: [] },
+  '/': { title: 'Tổng quan', breadcrumb: ['Tổng quan'] },
   '/projects': { title: 'Danh sách đề tài', breadcrumb: ['Danh sách đề tài'] },
   '/projects/register': { title: 'Đăng ký đề tài mới', breadcrumb: ['Danh sách đề tài', 'Đăng ký mới'] },
   '/my-projects': { title: 'Đề tài của tôi', breadcrumb: ['Đề tài của tôi'] },
@@ -32,9 +32,16 @@ const PAGE_LABELS: Record<string, { title: string; breadcrumb: string[] }> = {
   '/finance': { title: 'Tài chính & Quyết toán', breadcrumb: ['Tài chính & Quyết toán'] },
   '/reports': { title: 'Báo cáo & Thống kê', breadcrumb: ['Báo cáo & Thống kê'] },
   '/settings': { title: 'Cấu hình hệ thống', breadcrumb: ['Cấu hình hệ thống'] },
+  '/templates': { title: 'Kho tài liệu & Biểu mẫu', breadcrumb: ['Kho tài liệu & Biểu mẫu'] },
+  '/acceptance': { title: 'Hồ sơ nghiệm thu', breadcrumb: ['Hồ sơ nghiệm thu'] },
+  '/acceptance/revision': { title: 'Hoàn thiện sau nghiệm thu', breadcrumb: ['Hoàn thiện sau nghiệm thu'] },
 };
 
-function getPageMeta(pathname: string) {
+function getPageMeta(pathname: string, type: string | null) {
+  if (pathname === '/decisions') {
+    const label = type === 'RECOGNITION' ? 'Quyết định công nhận' : 'Quyết định giao thực hiện';
+    return { title: label, breadcrumb: [label] };
+  }
   if (PAGE_LABELS[pathname]) return PAGE_LABELS[pathname];
   // Dynamic routes: /projects/[id], /councils/[id]
   if (pathname.startsWith('/projects/') && !pathname.endsWith('/register')) {
@@ -43,7 +50,7 @@ function getPageMeta(pathname: string) {
   if (pathname.startsWith('/councils/')) {
     return { title: 'Workspace Hội đồng', breadcrumb: ['Hội đồng Khoa học', 'Workspace'] };
   }
-  return { title: 'Bảng điều hành', breadcrumb: [] };
+  return { title: 'Bảng điều hành', breadcrumb: ['Bảng điều hành'] };
 }
 
 interface HeaderProps {
@@ -54,16 +61,18 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, setSidebarCollapsed }) => {
   const { currentUser, switchRole } = useAuth();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const type = searchParams.get('type');
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
 
-  const pageMeta = getPageMeta(pathname);
+  const pageMeta = getPageMeta(pathname, type);
 
   const demoRoles: { role: Role; label: string; desc: string }[] = [
     { role: 'RESEARCHER', label: 'Cán bộ Nghiên cứu', desc: 'BS.CKII Nguyễn Văn An' },
     { role: 'RESEARCH_OFFICE', label: 'Phòng Quản lý NCKH', desc: 'ThS. Lê Hoàng Long' },
     { role: 'COUNCIL_MEMBER', label: 'Hội đồng Khoa học', desc: 'PGS.TS.BS Phạm Đức Dũng' },
-    { role: 'COUNCIL_SECRETARY', label: 'Thư ký Hội đồng', desc: 'BS.CKI Đỗ Bích Ngọc' },
+    { role: 'COUNCIL_MEMBER', label: 'Thành viên Hội đồng', desc: 'BS.CKI Đỗ Bích Ngọc' },
     { role: 'ETHICS_OFFICE', label: 'HĐ Đạo đức Y sinh', desc: 'TS.BS Vũ Thị Hồng Hạnh' },
     { role: 'FINANCE_OFFICER', label: 'Phòng Tài chính - KT', desc: 'CN. Nguyễn Thị Thu Hà' },
     { role: 'DIRECTOR', label: 'Ban Giám đốc', desc: 'GS.TS.BS Vũ Đình Khoa' },
@@ -78,7 +87,7 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, setSidebarColl
 
   return (
     <header
-      className={`fixed top-0 right-0 z-20 bg-white border-b border-[#E2E8F0] transition-all duration-200 shadow-xs ${sidebarCollapsed ? 'left-16' : 'left-64'
+      className={`fixed top-0 right-0 z-20 h-14 overflow-visible bg-white border-b border-[#E2E8F0] transition-all duration-200 shadow-xs ${sidebarCollapsed ? 'left-16' : 'left-64'
         }`}
     >
       {/* Main header row */}
@@ -99,23 +108,23 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, setSidebarColl
           <div className="flex items-center gap-1.5 min-w-0">
             {pageMeta.breadcrumb.length > 0 && (
               <>
-                <Link href="/" className="text-slate-400 hover:text-slate-600 transition flex-shrink-0">
+                <Link href="/" className="text-slate-400 hover:text-slate-655 transition flex-shrink-0">
                   <Home className="w-3.5 h-3.5" />
                 </Link>
                 {pageMeta.breadcrumb.map((crumb, i) => (
                   <React.Fragment key={i}>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-350 flex-shrink-0" />
                     {i === pageMeta.breadcrumb.length - 1 ? (
-                      <span className="text-[15px] font-bold text-slate-900 truncate">{crumb}</span>
+                      <span className="text-[13px] font-bold text-slate-800 truncate">{crumb}</span>
                     ) : (
-                      <span className="text-[13px] text-slate-400 font-medium truncate">{crumb}</span>
+                      <span className="text-[12px] text-slate-450 font-medium truncate">{crumb}</span>
                     )}
                   </React.Fragment>
                 ))}
               </>
             )}
             {pageMeta.breadcrumb.length === 0 && (
-              <span className="text-[16px] font-bold text-slate-900">
+              <span className="text-[13px] font-bold text-slate-800">
                 {pageMeta.title}
               </span>
             )}

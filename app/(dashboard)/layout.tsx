@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { Breadcrumb } from '@/components/layout/Breadcrumb';
@@ -23,11 +23,12 @@ export default function DashboardLayout({
           }`}
       >
         {/* Header */}
-        <Header sidebarCollapsed={sidebarCollapsed} setSidebarCollapsed={setSidebarCollapsed} />
+        <Suspense fallback={<div className="h-14 bg-white border-b border-[#E2E8F0]" />}>
+          <Header sidebarCollapsed={sidebarCollapsed} setSidebarCollapsed={setSidebarCollapsed} />
+        </Suspense>
 
         {/* Content Body with High Density */}
-        <main className="flex-1 mt-16 p-4 md:p-6 max-w-[1600px] w-full mx-auto">
-          <Breadcrumb />
+        <main className="flex-1 mt-16 p-3 md:p-4 w-full">
           {children}
         </main>
 

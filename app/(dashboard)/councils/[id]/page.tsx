@@ -7,491 +7,632 @@ import { useAuth } from '@/lib/auth-context';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { DocxExportService } from '@/lib/services/docx-export-service';
 import {
-  Award,
-  Calendar,
-  Users,
-  CheckCircle2,
-  Clock,
   ArrowLeft,
   FileText,
-  CheckSquare,
-  AlertCircle,
   Save,
   Printer,
-  ChevronRight,
   Download,
-  ShieldCheck,
-  Building2,
-  FileCheck2,
   Share2,
-  Sparkles,
   ClipboardList,
-  UserCheck,
+  PenTool,
+  CheckCircle2,
+  Circle,
 } from 'lucide-react';
+import { canSignMinutes } from '@/lib/utils/permissions';
+
+/* ── Tiêu chí chấm điểm theo TT 09/2024 ── */
+const CRITERIA = [
+  { key: 'novelty',     max: 20, label: 'Tính cấp thiết và tính mới của đề tài' },
+  { key: 'methodology', max: 30, label: 'Mục tiêu, đối tượng và phương pháp nghiên cứu' },
+  { key: 'feasibility', max: 20, label: 'Tính khả thi và năng lực tổ chức thực hiện' },
+  { key: 'efficacy',    max: 20, label: 'Hiệu quả khoa học, thực tiễn và khả năng ứng dụng' },
+  { key: 'capability',  max: 10, label: 'Dự toán kinh phí' },
+] as const;
+
+/* ── Kết quả xét duyệt ── */
+const VERDICT_OPTIONS = [
+  { id: 'APPROVED', label: 'Thông qua'                         },
+  { id: 'REVISION', label: 'Thông qua có sửa đổi, bổ sung'    },
+  { id: 'REJECTED', label: 'Không thông qua'                   },
+] as const;
+
+const TABS = [
+  { id: 'MINUTES' as const, icon: ClipboardList, label: 'Biên bản họp Hội đồng' },
+  { id: 'SCORING' as const, icon: PenTool,       label: 'Phiếu chấm điểm'       },
+  { id: 'HANDOVER' as const, icon: Share2,        label: 'Biên bản bàn giao'     },
+];
 
 export default function CouncilWorkspacePage({ params }: { params: { id: string } }) {
   const { currentUser } = useAuth();
-  const council = repo.getCouncilById(params.id) || repo.getCouncils()[0];
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(council?.projectIds[0] || 'proj-01');
+  const council  = repo.getCouncilById(params.id) || repo.getCouncils()[0];
+
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(
+    council?.projectIds[0] || 'proj-01'
+  );
   const project = repo.getProjectById(selectedProjectId);
+  const [activeTab, setActiveTab] = useState<'MINUTES' | 'SCORING' | 'HANDOVER'>('MINUTES');
 
-  // Tab chuyển đổi giữa: 1. Phiếu chấm điểm chuyên môn | 2. Lập Biên bản họp Online | 3. Biên bản Bàn giao
-  const [activeTab, setActiveTab] = useState<'SCORING' | 'MINUTES' | 'HANDOVER'>('MINUTES');
-
-  // State Phiếu chấm điểm 5 tiêu chí (Thông tư 09/2024 & Thông tư 43/2024)
-  const [scores, setScores] = useState({
-    novelty: 18, // max 20
-    methodology: 26, // max 30
-    feasibility: 18, // max 20
-    efficacy: 17, // max 20
-    capability: 9, // max 10
+  /* state – chấm điểm */
+  const [scores, setScores] = useState<Record<string, number>>({
+    novelty: 0, methodology: 0, feasibility: 0, efficacy: 0, capability: 0,
   });
-  const totalScore = scores.novelty + scores.methodology + scores.feasibility + scores.efficacy + scores.capability;
-  const [expertVote, setExpertVote] = useState<'APPROVE' | 'APPROVE_WITH_REVISION' | 'REJECT'>('APPROVE_WITH_REVISION');
-  const [expertComments, setExpertComments] = useState(
-    'Đề cương có tính thực tiễn cao đối với bệnh viện, cần làm rõ hơn tiêu chuẩn chọn bệnh nhân tại Khoa Hồi sức tích cực.'
-  );
+  const totalScore = Object.values(scores).reduce((a, b) => a + b, 0);
+  const [expertComment, setExpertComment] = useState('');
 
-  // State Biên bản họp Hội đồng Online (BM-HĐ-02 / BM-NT-02 / BM-IRB-01)
-  const [councilResult, setCouncilResult] = useState<'APPROVED' | 'REVISION' | 'REJECTED'>('REVISION');
-  const [conclusion, setConclusion] = useState(
-    'Hội đồng nhất trí thông qua đề cương. Đề nghị chủ nhiệm đề tài bổ sung làm rõ cỡ mẫu nghiên cứu tại Khoa Hồi sức tích cực (tối thiểu 80 bệnh án) và cập nhật lại bảng dự toán chi tiết v2.0 trước khi ký duyệt hợp đồng.'
-  );
-  const [minutesCode, setMinutesCode] = useState(`BB-${council.code}-01`);
-  const [savedSuccess, setSavedSuccess] = useState(false);
+  /* state – biên bản họp */
+  const [verdict, setVerdict] = useState<'APPROVED' | 'REVISION' | 'REJECTED' | ''>('');
+  const [minutesContent, setMinutesContent] = useState('');
+  const [savedOk, setSavedOk] = useState(false);
 
-  // Handover state (BM-CG-01)
-  const [targetDepartment, setTargetDepartment] = useState('Khoa Hồi sức tích cực & Chống độc');
-  const [handoverContent, setHandoverContent] = useState('Phác đồ phối hợp kháng sinh theo dược động học (PK/PD) cho bệnh nhân nhiễm khuẩn huyết nặng.');
+  /* state – bàn giao */
+  const [receivingDept, setReceivingDept] = useState('');
+  const [handoverDetail, setHandoverDetail] = useState('');
 
   const handleExportDocx = () => {
     if (!project) return;
     DocxExportService.exportCouncilMinutesDocx(
-      council.name,
-      council.code,
-      project.title,
-      project.principalInvestigatorName,
-      councilResult,
-      conclusion
+      council.name, council.code,
+      project.title, project.principalInvestigatorName,
+      verdict as any, minutesContent
     );
   };
 
   const handleSaveMinutes = () => {
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 4000);
+    if (!canSignMinutes(currentUser, council)) {
+      alert('Bạn không có quyền ban hành biên bản Hội đồng. Chỉ Chủ tịch hoặc Thư ký mới được ký xác nhận.');
+      return;
+    }
+
+    // Enforce minimum signatures: at least 3 evaluations submitted including Chair and Secretary
+    const signedCount = council.members.filter((m) => m.evaluationSubmitted).length;
+    const chairSigned = council.members.some((m) => m.roleInCouncil === 'CHỦ_TỊCH' && m.evaluationSubmitted);
+    const secretarySigned = council.members.some((m) => m.roleInCouncil === 'THƯ_KÝ' && m.evaluationSubmitted);
+    if (signedCount < 3 || !chairSigned || !secretarySigned) {
+      alert('Không thể ban hành biên bản: yêu cầu tối thiểu 3 phiếu đã ký, trong đó có Chủ tịch và Thư ký.');
+      return;
+    }
+
+    // Persist minutes and emit audit + notifications
+    setSavedOk(true);
+    setTimeout(() => setSavedOk(false), 4000);
+
+    if (project) {
+      // apply verdict to project
+      const newProposalStatus = verdict === 'APPROVED' ? 'PROPOSAL_APPROVED' : verdict === 'REVISION' ? 'PROPOSAL_REVISION_REQUIRED' : 'REJECTED';
+      const newProjectStatus = verdict === 'APPROVED' ? 'APPROVED' : project.status;
+
+      repo.updateCouncil(council.id, { status: 'CONCLUDED' });
+      if (verdict === 'APPROVED') {
+        const decisionId = `dec-${Date.now()}`;
+        repo.createDecision({
+          id: decisionId,
+          type: 'ASSIGNMENT',
+          status: 'PENDING_SIGNATURE',
+          projectId: project.id,
+          decisionNumber: `QĐ-${new Date().getFullYear()}/ASSIGN-${project.proposalCode}`,
+          createdAt: new Date().toISOString(),
+          createdBy: currentUser.id,
+          notes: `Được tạo tự động sau khi Hội đồng phê duyệt Đề cương đề tài "${project.title}"`,
+          history: [
+            {
+              id: `dh-${Date.now()}`,
+              decisionId: decisionId,
+              action: 'SUBMITTED_FOR_SIGNATURE',
+              toStatus: 'PENDING_SIGNATURE',
+              actorId: currentUser.id,
+              actorName: currentUser.fullName,
+              actorRole: currentUser.role,
+              timestamp: new Date().toISOString(),
+              notes: 'Tự động tạo dự thảo và trình ký quyết định giao thực hiện từ kết luận Hội đồng'
+            }
+          ]
+        });
+
+        // Also add notification for Director/Admin that a new decision is pending signature
+        repo.addNotification({
+          userId: 'user-10', // GS.TS.BS Vũ Đình Khoa (Giám đốc Bệnh viện)
+          title: `Cần ký duyệt Quyết định giao thực hiện: ${project.proposalCode}`,
+          content: `Hội đồng đã thông qua đề tài "${project.title}". Quyết định giao thực hiện đã được tạo tự động và đang chờ bạn ký phê duyệt.`,
+          type: 'INFO',
+          link: `/decisions/${decisionId}`,
+        });
+      }
+
+      repo.updateProject(project.id, {
+        proposalStatus: newProposalStatus as any,
+        status: newProjectStatus as any,
+        statusHistory: [
+          ...project.statusHistory,
+          {
+            id: `h-${Date.now()}`,
+            projectId: project.id,
+            fromStatus: project.proposalStatus,
+            toStatus: newProposalStatus,
+            changedBy: currentUser.id,
+            changedByName: currentUser.fullName,
+            userRole: currentUser.role,
+            changedAt: new Date().toLocaleString('vi-VN'),
+            action: `Hội đồng: ${verdict}`,
+            comment: minutesContent,
+          },
+        ],
+      });
+
+      repo.addAuditLog({
+        userId: currentUser.id,
+        userFullName: currentUser.fullName,
+        userRole: currentUser.role,
+        actionCode: `COUNCIL_VERDICT_${verdict}`,
+        entityType: 'PROJECT',
+        entityId: project.id,
+        notes: `Hội đồng ${council.code} đã kết luận ${verdict} cho đề tài ${project.proposalCode}.`,
+      });
+
+      // Notify PI and Research Office
+      repo.addNotification({
+        userId: project.principalInvestigatorId,
+        title: `Hội đồng kết luận: ${project.proposalCode}`,
+        content: `Hội đồng ${council.name} đã đưa ra kết luận: ${verdict} — ${minutesContent}`,
+        type: verdict === 'APPROVED' ? 'SUCCESS' : verdict === 'REVISION' ? 'WARNING' : 'ERROR',
+        link: `/projects/${project.id}`,
+      });
+      repo.getUsers().filter(u => u.role === 'RESEARCH_OFFICE').forEach(u => {
+        repo.addNotification({
+          userId: u.id,
+          title: `Hội đồng đã kết luận đề tài ${project.proposalCode}`,
+          content: `Kết luận: ${verdict} — ${minutesContent}`,
+          type: 'INFO',
+          link: `/projects/${project.id}`,
+        });
+      });
+    }
   };
 
+  /* ─── render ─── */
   return (
-    <div className="space-y-3 max-w-[1440px] mx-auto text-slate-800">
-      {/* 1. Breadcrumb & Navigation */}
-      <div className="flex items-center justify-between text-xs text-slate-500">
-        <div className="flex items-center gap-1.5">
-          <Link href="/councils" className="inline-flex items-center gap-1 text-slate-600 hover:text-[#0A6EBD] font-medium transition">
-            <ArrowLeft className="w-3.5 h-3.5" /> Danh sách Hội đồng
-          </Link>
-          <span>/</span>
-          <span className="font-mono text-slate-400">{council.code}</span>
-          <span>/</span>
-          <span className="font-semibold text-slate-700">Workspace Chấm điểm & Lập Biên bản Họp Online</span>
-        </div>
-      </div>
+    <main className="flex flex-col gap-3 text-slate-800 pb-12">
 
-      {/* 2. Council Header Banner */}
-      <div className="bg-white px-4 py-3 rounded-xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="font-mono font-bold text-xs bg-sky-50 text-[#0A6EBD] px-2.5 py-0.5 rounded border border-sky-100">
+      {/* ── Điều hướng ── */}
+      <nav className="flex items-center gap-2 text-[12px] text-slate-500 select-none">
+        <Link
+          href="/councils"
+          className="inline-flex items-center gap-1 text-slate-600 hover:text-[#0A6EBD] font-medium transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Danh sách Hội đồng
+        </Link>
+        <span className="text-slate-300">/</span>
+        <span className="font-mono text-slate-500">{council.code}</span>
+        <span className="text-slate-300">/</span>
+        <span className="text-slate-700 font-semibold">Nghiệp vụ Hội đồng</span>
+      </nav>
+
+      {/* ── Tiêu đề phiên họp ── */}
+      <div className="bg-white border border-slate-200 rounded-xl shadow-xs px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-[11px] font-bold bg-[#F0F6FE] text-[#0A6EBD] border border-[#C7DFF7] px-2.5 py-0.5 rounded">
               {council.code}
             </span>
-            <h1 className="text-lg font-bold text-slate-900">{council.name}</h1>
+            <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded">
+              {council.type === 'PROPOSAL_REVIEW' ? 'Hội đồng xét duyệt đề cương' : 'Hội đồng nghiệm thu'}
+            </span>
           </div>
-          <p className="text-[13px] text-slate-500 mt-0.5">
-            Phiên họp: <strong>{council.meetingDate}</strong> tại <strong>{council.location}</strong> • Tiêu chuẩn đạt tối thiểu: {council.minPassRatio * 100}% phiếu tán thành
+          <h1 className="text-[15px] font-bold text-slate-900 leading-snug mt-1">{council.name}</h1>
+          <p className="text-[12px] text-slate-500">
+            Phiên họp: <strong className="text-slate-700">{council.meetingDate}</strong>
+            {council.meetingTime ? ` — ${council.meetingTime}` : ''}
+            {council.location ? ` · ${council.location}` : ''}
           </p>
         </div>
-
-        {/* Nút thao tác nhanh trên đầu */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => window.print()}
-            className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg text-slate-700 font-semibold text-xs inline-flex items-center gap-1.5 shadow-xs transition"
+            className="h-8 px-3 text-[12px] font-semibold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 inline-flex items-center gap-1.5 transition-colors"
           >
-            <Printer className="w-3.5 h-3.5" /> In Biên bản
+            <Printer className="w-3.5 h-3.5" /> In
           </button>
           <button
             onClick={handleExportDocx}
-            className="px-3.5 py-1.5 bg-[#0A6EBD] hover:bg-[#085896] text-white font-semibold text-xs rounded-lg inline-flex items-center gap-1.5 shadow-xs transition"
+            className="h-8 px-3 text-[12px] font-semibold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 inline-flex items-center gap-1.5 transition-colors"
           >
-            <Download className="w-3.5 h-3.5" /> Xuất File Word (.docx)
+            <Download className="w-3.5 h-3.5" /> Xuất Word
           </button>
         </div>
       </div>
 
-      {/* 3. Master - Detail Grid (4 Cột Danh sách Đề tài & Thành viên / 8 Cột Workspace Nghiệp vụ) */}
+      {/* ── Layout chính ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
-        {/* CỘT TRÁI: Danh sách đề tài + Thành viên Hội đồng */}
-        <div className="lg:col-span-4 space-y-3">
-          {/* Danh mục Đề tài */}
-          <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
-            <div className="p-3 bg-[#F8FAFC] border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center justify-between">
-              <span>Đề tài trong phiên họp</span>
-              <span className="font-mono text-[#0A6EBD] bg-sky-50 px-2 py-0.5 rounded border border-sky-100">
-                {council.projectIds.length} Đề tài
+
+        {/* ══ Panel trái ══ */}
+        <aside className="lg:col-span-4 space-y-3">
+
+          {/* Danh sách đề tài */}
+          <section className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+            <header className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Đề tài trong phiên họp</h2>
+              <span className="font-mono text-[11px] font-bold text-[#0A6EBD] bg-[#F0F6FE] border border-[#C7DFF7] px-2 py-0.5 rounded">
+                {council.projectIds.length}
               </span>
-            </div>
+            </header>
             <div className="divide-y divide-slate-100">
               {council.projectIds.map((pid) => {
                 const p = repo.getProjectById(pid);
                 if (!p) return null;
-                const isSelected = selectedProjectId === p.id;
-
+                const active = selectedProjectId === p.id;
                 return (
-                  <div
+                  <button
                     key={p.id}
                     onClick={() => setSelectedProjectId(p.id)}
-                    className={`p-3 cursor-pointer transition ${
-                      isSelected
-                        ? 'bg-[#EBF4FC] border-l-4 border-l-[#0A6EBD]'
-                        : 'hover:bg-slate-50'
+                    className={`w-full text-left px-4 py-3 border-l-[3px] transition-colors ${
+                      active
+                        ? 'border-l-[#0A6EBD] bg-[#F5FAFF]'
+                        : 'border-l-transparent hover:bg-slate-50'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-xs text-[#0A6EBD]">{p.projectCode || p.proposalCode}</span>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-mono text-[11px] font-bold text-[#0A6EBD]">
+                        {p.projectCode || p.proposalCode}
+                      </span>
                       <StatusBadge status={p.status} />
                     </div>
-                    <p className="font-bold text-xs text-slate-900 line-clamp-2 mt-1 leading-snug">{p.title}</p>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      {p.principalInvestigatorName} • {p.departmentName}
-                    </p>
+                    <p className="text-[12px] font-semibold text-slate-900 leading-snug line-clamp-2">{p.title}</p>
+                    <p className="text-[11px] text-slate-400 mt-1">{p.principalInvestigatorName}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Thành viên hội đồng */}
+          <section className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+            <header className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="text-[11px] font-bold uppercase tracking-widest text-slate-500">
+                Thành viên Hội đồng
+              </h2>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                {council.members.length} người
+              </span>
+            </header>
+            <div className="divide-y divide-slate-100">
+              {council.members.map((m) => {
+                const roleLabel =
+                  m.roleInCouncil === 'CHỦ_TỊCH' ? 'Chủ tịch' :
+                  m.roleInCouncil === 'THƯ_KÝ'   ? 'Thư ký'   : 'Ủy viên';
+                return (
+                  <div key={m.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[12px] font-semibold text-slate-900 truncate">{m.userFullName}</p>
+                      <p className="text-[11px] text-slate-400">{roleLabel}</p>
+                    </div>
+                    {m.evaluationSubmitted ? (
+                      <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                        <CheckCircle2 className="w-3 h-3" /> Đã chấm
+                      </span>
+                    ) : (
+                      <span className="shrink-0 inline-flex items-center gap-1 text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                        <Circle className="w-3 h-3" /> Chờ
+                      </span>
+                    )}
                   </div>
                 );
               })}
             </div>
-          </div>
+          </section>
+        </aside>
 
-          {/* Danh sách Thành viên Hội đồng */}
-          <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
-            <div className="p-3 bg-[#F8FAFC] border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center justify-between">
-              <span>Thành viên Hội đồng ({council.members.length})</span>
-              <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-medium">
-                Đã đủ túc số
-              </span>
-            </div>
-            <div className="p-2.5 divide-y divide-slate-100 text-xs">
-              {council.members.map((m) => (
-                <div key={m.id} className="py-2 flex items-center justify-between">
-                  <div>
-                    <span className="font-bold text-slate-900 block">{m.userFullName}</span>
-                    <span className="text-slate-500 text-[11px]">{m.roleInCouncil} • {m.departmentName}</span>
+        {/* ══ Panel phải ══ */}
+        <div className="lg:col-span-8">
+          {project ? (
+            <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+
+              {/* Thông tin đề tài đang xem */}
+              <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <span className="font-mono text-[11px] font-bold text-[#0A6EBD]">
+                      {project.projectCode || project.proposalCode}
+                    </span>
+                    <h2 className="text-[13px] font-bold text-slate-900 leading-snug mt-0.5 line-clamp-2">
+                      {project.title}
+                    </h2>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Chủ nhiệm: <strong className="text-slate-700">{project.principalInvestigatorName}</strong>
+                      {project.departmentName ? ` — ${project.departmentName}` : ''}
+                    </p>
                   </div>
-                  {m.evaluationSubmitted ? (
-                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      Đã chấm
-                    </span>
-                  ) : (
-                    <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                      Chờ chấm
-                    </span>
-                  )}
+                  {(() => {
+                    const a = council.projectAssignments?.find((x) => x.projectId === selectedProjectId);
+                    if (!a?.reviewer1Name) return null;
+                    return (
+                      <div className="shrink-0 text-right space-y-0.5">
+                        <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Phản biện</p>
+                        {a.reviewer1Name && (
+                          <p className="text-[11px] font-semibold text-slate-700">
+                            PB1: <span className="text-[#0A6EBD]">{a.reviewer1Name}</span>
+                          </p>
+                        )}
+                        {a.reviewer2Name && (
+                          <p className="text-[11px] font-semibold text-slate-700">
+                            PB2: <span className="text-[#0A6EBD]">{a.reviewer2Name}</span>
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
+              </div>
 
-        {/* CỘT PHẢI: Workspace Nghiệp vụ Hội đồng */}
-        <div className="lg:col-span-8 space-y-3">
-          {project && (
-            <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
-              {/* Header Hồ sơ đang chọn */}
-              <div className="p-4 bg-slate-50 border-b border-slate-200">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-mono font-bold text-[#0A6EBD] bg-white px-2 py-0.5 rounded border border-sky-200">
-                    {project.projectCode || project.proposalCode}
-                  </span>
-                  <span className="text-xs font-medium text-slate-500">
-                    Chủ nhiệm: <strong>{project.principalInvestigatorName}</strong> ({project.departmentName})
-                  </span>
-                </div>
-                <h2 className="text-sm font-bold text-slate-900 mt-1.5 leading-snug">{project.title}</h2>
-                
-                {/* 2 Phản biện phân công chuyên sâu */}
-                {(() => {
-                  const assign = council.projectAssignments?.find((a) => a.projectId === selectedProjectId);
+              {/* Tab bar */}
+              <div className="flex border-b border-slate-200 px-2 gap-0">
+                {TABS.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
                   return (
-                    <div className="flex flex-wrap items-center gap-2 mt-2.5 pt-2 border-t border-slate-200/80 text-[11px]">
-                      <span className="text-slate-500 font-semibold flex items-center gap-1">
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                        Phản biện độc lập theo đề tài:
-                      </span>
-                      <span className="bg-white text-slate-800 px-2 py-0.5 rounded border border-slate-200 font-semibold">
-                        PB1: <strong className="text-[#0A6EBD]">{assign?.reviewer1Name || 'PGS.TS.BS. Phạm Đức Dũng'}</strong>
-                      </span>
-                      <span className="bg-white text-slate-800 px-2 py-0.5 rounded border border-slate-200 font-semibold">
-                        PB2: <strong className="text-[#0A6EBD]">{assign?.reviewer2Name || 'TS.BS. Vũ Thị Hồng Hạnh'}</strong>
-                      </span>
-                      {assign?.notes && (
-                        <span className="text-slate-500 italic">• Yêu cầu: {assign.notes}</span>
-                      )}
-                    </div>
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`flex items-center gap-1.5 px-4 py-2.5 text-[12px] font-semibold border-b-2 transition-colors whitespace-nowrap ${
+                        isActive
+                          ? 'border-[#0A6EBD] text-[#0A6EBD]'
+                          : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      {tab.label}
+                    </button>
                   );
-                })()}
+                })}
               </div>
 
-              {/* Navigation Tabs Bar */}
-              <div className="flex border-b border-slate-200 bg-white px-3 text-xs font-bold text-slate-600">
-                <button
-                  onClick={() => setActiveTab('MINUTES')}
-                  className={`px-4 py-3 border-b-2 transition flex items-center gap-1.5 ${
-                    activeTab === 'MINUTES'
-                      ? 'border-[#0A6EBD] text-[#0A6EBD] bg-sky-50/40'
-                      : 'border-transparent hover:text-slate-900'
-                  }`}
-                >
-                  <FileText className="w-3.5 h-3.5" /> Lập Biên bản họp Online (BM-HĐ-02 / BM-IRB-01)
-                </button>
-                <button
-                  onClick={() => setActiveTab('SCORING')}
-                  className={`px-4 py-3 border-b-2 transition flex items-center gap-1.5 ${
-                    activeTab === 'SCORING'
-                      ? 'border-[#0A6EBD] text-[#0A6EBD] bg-sky-50/40'
-                      : 'border-transparent hover:text-slate-900'
-                  }`}
-                >
-                  <Award className="w-3.5 h-3.5" /> Phiếu chấm điểm điện tử (BM-HĐ-01 / BM-NT-01)
-                </button>
-                <button
-                  onClick={() => setActiveTab('HANDOVER')}
-                  className={`px-4 py-3 border-b-2 transition flex items-center gap-1.5 ${
-                    activeTab === 'HANDOVER'
-                      ? 'border-[#0A6EBD] text-[#0A6EBD] bg-sky-50/40'
-                      : 'border-transparent hover:text-slate-900'
-                  }`}
-                >
-                  <Share2 className="w-3.5 h-3.5" /> Bàn giao ứng dụng (BM-CG-01)
-                </button>
-              </div>
-
-              {/* Tab 1: LẬP BIÊN BẢN HỌP HỘI ĐỒNG ONLINE */}
+              {/* ─── Tab: Biên bản họp ─── */}
               {activeTab === 'MINUTES' && (
-                <div className="p-5 space-y-4 text-xs">
-                  {savedSuccess && (
-                    <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg flex items-center gap-2 animate-in fade-in">
+                <div className="p-5 space-y-5">
+                  {savedOk && (
+                    <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-[12px] text-emerald-800 font-medium">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span><strong>Thành công:</strong> Đã lưu và phát hành Biên bản họp Hội đồng vào hồ sơ đề tài!</span>
+                      Biên bản đã được lưu và phát hành vào hồ sơ đề tài.
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <div>
-                      <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                        <ClipboardList className="w-4 h-4 text-[#0A6EBD]" /> Nội dung Biên bản họp Hội đồng Xét duyệt Đề cương
-                      </h3>
-                      <p className="text-[11px] text-slate-500">Mẫu BM-HĐ-02 & BM-IRB-01 theo Thông tư 09/2024 & Thông tư 43/2024/TT-BYT</p>
-                    </div>
-                    <span className="font-mono text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded">
-                      Số: {minutesCode}
-                    </span>
-                  </div>
-
-                  {/* 1. Kết luận chung của Hội đồng */}
+                  {/* Kết quả xét duyệt */}
                   <div className="space-y-2">
-                    <label className="font-bold text-slate-800 text-xs">1. Kết luận chung của Hội đồng khoa học:</label>
+                    <p className="text-[12px] font-bold text-slate-700">Kết quả xét duyệt</p>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {[
-                        { id: 'APPROVED', label: 'Thông qua (Không cần sửa)', desc: 'Hồ sơ đạt chuẩn xuất sắc', color: 'border-emerald-500 bg-emerald-50/60 text-emerald-900' },
-                        { id: 'REVISION', label: 'Thông qua Có sửa đổi bổ sung', desc: 'Chủ nhiệm nộp lại v2.0', color: 'border-amber-500 bg-amber-50/60 text-amber-900' },
-                        { id: 'REJECTED', label: 'Không thông qua', desc: 'Dừng đề tài hoặc đổi đề cương', color: 'border-rose-500 bg-rose-50/60 text-rose-900' },
-                      ].map((item) => (
-                        <label
-                          key={item.id}
-                          className={`p-3 rounded-lg border cursor-pointer transition flex flex-col justify-between ${
-                            councilResult === item.id ? item.color + ' ring-2 ring-[#0A6EBD]' : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
+                      {VERDICT_OPTIONS.map((v) => {
+                        const active = verdict === v.id;
+                        const borderColor =
+                          v.id === 'APPROVED' ? 'border-emerald-500' :
+                          v.id === 'REVISION'  ? 'border-amber-400'  : 'border-rose-500';
+                        const activeBg =
+                          v.id === 'APPROVED' ? 'bg-emerald-50 text-emerald-900' :
+                          v.id === 'REVISION'  ? 'bg-amber-50 text-amber-900'    : 'bg-rose-50 text-rose-900';
+                        return (
+                          <label
+                            key={v.id}
+                            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border cursor-pointer select-none text-[12px] font-semibold transition-colors ${
+                              active
+                                ? `${borderColor} ${activeBg} ring-1 ring-offset-0 ${borderColor.replace('border', 'ring')}`
+                                : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
                             <input
                               type="radio"
-                              name="councilResultOption"
-                              checked={councilResult === item.id}
-                              onChange={() => setCouncilResult(item.id as any)}
-                              className="text-[#0A6EBD]"
+                              name="verdict"
+                              checked={active}
+                              onChange={() => setVerdict(v.id)}
+                              className="accent-[#0A6EBD] w-3.5 h-3.5 shrink-0"
                             />
-                            <span className="font-bold text-xs">{item.label}</span>
-                          </div>
-                          <span className="text-[11px] text-slate-500 mt-1 pl-5">{item.desc}</span>
-                        </label>
-                      ))}
+                            {v.label}
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  {/* 2. Nội dung yêu cầu sửa đổi, giải trình */}
+                  {/* Nội dung kết luận */}
                   <div className="space-y-1.5">
-                    <label className="font-bold text-slate-800 text-xs flex items-center justify-between">
-                      <span>2. Nội dung chi tiết yêu cầu Chủ nhiệm đề tài sửa đổi, giải trình:</span>
-                      <span className="text-slate-400 font-normal">Tự động gắn vào Thông báo phản hồi cho Bác sĩ</span>
+                    <label className="text-[12px] font-bold text-slate-700">
+                      Nội dung kết luận
                     </label>
                     <textarea
-                      rows={4}
-                      value={conclusion}
-                      onChange={(e) => setConclusion(e.target.value)}
-                      className="w-full p-3 rounded-lg border border-slate-300 focus:border-[#0A6EBD] focus:ring-1 focus:ring-[#0A6EBD] outline-none text-xs leading-relaxed text-slate-800 bg-slate-50/50 focus:bg-white transition"
+                      rows={5}
+                      value={minutesContent}
+                      onChange={(e) => setMinutesContent(e.target.value)}
+                      className="w-full px-3 py-2.5 text-[12px] text-slate-800 leading-relaxed border border-slate-300 rounded-lg outline-none focus:border-[#0A6EBD] focus:ring-1 focus:ring-[#0A6EBD] bg-white transition resize-none"
                     />
                   </div>
 
-                  {/* 3. Tóm tắt biểu quyết của Hội đồng */}
-                  <div className="p-3 bg-[#F8FAFC] rounded-lg border border-slate-200 space-y-2">
-                    <span className="font-bold text-slate-800 text-xs">3. Tổng hợp kết quả bỏ phiếu của 05 Ủy viên Hội đồng:</span>
-                    <div className="grid grid-cols-3 gap-3 text-center">
-                      <div className="p-2 bg-white rounded border border-slate-200">
-                        <span className="text-slate-500 text-[11px] block">Số phiếu Tán thành</span>
-                        <strong className="text-emerald-700 text-base font-mono">5 / 5 (100%)</strong>
-                      </div>
-                      <div className="p-2 bg-white rounded border border-slate-200">
-                        <span className="text-slate-500 text-[11px] block">Số phiếu Yêu cầu sửa</span>
-                        <strong className="text-amber-700 text-base font-mono">4 / 5</strong>
-                      </div>
-                      <div className="p-2 bg-white rounded border border-slate-200">
-                        <span className="text-slate-500 text-[11px] block">Điểm trung bình</span>
-                        <strong className="text-[#0A6EBD] text-base font-mono">88.5 / 100</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Nút hành động */}
-                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                    <button
-                      onClick={handleExportDocx}
-                      className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition inline-flex items-center gap-1.5"
-                    >
-                      <Download className="w-3.5 h-3.5" /> Xuất File Word (.docx)
-                    </button>
-                    <button
-                      onClick={handleSaveMinutes}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg transition inline-flex items-center gap-1.5 shadow-xs"
-                    >
-                      <Save className="w-4 h-4" /> Lưu & Ban Hành Biên Bản Vào Hệ Thống
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Tab 2: PHIẾU CHẤM ĐIỂM ĐIỆN TỬ */}
-              {activeTab === 'SCORING' && (
-                <div className="p-5 space-y-4 text-xs">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <div>
-                      <h3 className="font-bold text-sm text-slate-900">
-                        Phiếu Chấm Điểm Thẩm Định Đề Cương (BM-HĐ-01)
-                      </h3>
-                      <p className="text-[11px] text-slate-500">Chấm điểm độc lập theo thang điểm 100 của Bộ Y tế</p>
-                    </div>
-                    <span className="text-xs font-mono font-bold text-[#0A6EBD] bg-sky-50 px-2.5 py-1 rounded border border-sky-100">
-                      Tổng: {totalScore} / 100 điểm ({totalScore >= 70 ? 'ĐẠT' : 'KHÔNG ĐẠT'})
-                    </span>
-                  </div>
-
-                  {/* 5 Tiêu chí */}
-                  <div className="space-y-2">
+                  {/* Tổng hợp bỏ phiếu */}
+                  <div className="grid grid-cols-3 gap-3">
                     {[
-                      { key: 'novelty', max: 20, title: '1. Tính cấp thiết & Giá trị khoa học của nghiên cứu', desc: 'Không trùng lặp, giải quyết vấn đề điều trị thực tiễn tại bệnh viện.' },
-                      { key: 'methodology', max: 30, title: '2. Phương pháp nghiên cứu & Cỡ mẫu điều tra', desc: 'Thiết kế nghiên cứu, tiêu chuẩn chọn/loại trừ, kỹ thuật thu thập mẫu bệnh án.' },
-                      { key: 'feasibility', max: 20, title: '3. Tính khả thi & Kế hoạch triển khai', desc: 'Thời gian, nhân lực, trang thiết bị máy móc phòng xét nghiệm sẵn có.' },
-                      { key: 'efficacy', max: 20, title: '4. Hiệu quả ứng dụng lâm sàng & Bàn giao', desc: 'Khả năng đưa vào phác đồ điều trị thường quy, nâng cao chất lượng chẩn đoán.' },
-                      { key: 'capability', max: 10, title: '5. Dự toán kinh phí & Năng lực nhóm nghiên cứu', desc: 'Dự toán hợp lý theo định mức quy chế tài chính viện.' },
-                    ].map((crit) => (
-                      <div key={crit.key} className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between gap-4">
-                        <div className="flex-1">
-                          <p className="font-bold text-slate-900 text-xs">{crit.title}</p>
-                          <p className="text-[11px] text-slate-500">{crit.desc} (Tối đa {crit.max} điểm)</p>
-                        </div>
-                        <input
-                          type="number"
-                          min={0}
-                          max={crit.max}
-                          value={(scores as any)[crit.key]}
-                          onChange={(e) => setScores({ ...scores, [crit.key]: Number(e.target.value) })}
-                          className="w-16 p-1.5 text-center font-mono font-bold text-xs border border-slate-300 rounded bg-white text-[#0A6EBD] focus:border-[#0A6EBD] outline-none"
-                        />
+                      { label: 'Phiếu tán thành', value: '5 / 5', accent: 'text-emerald-700' },
+                      { label: 'Phiếu yêu cầu sửa', value: '4 / 5', accent: 'text-amber-700' },
+                      { label: 'Điểm trung bình', value: '88,5', accent: 'text-[#0A6EBD]' },
+                    ].map((item) => (
+                      <div key={item.label} className="text-center px-3 py-3 bg-slate-50 border border-slate-200 rounded-lg">
+                        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">{item.label}</p>
+                        <p className={`text-[18px] font-bold font-mono ${item.accent}`}>{item.value}</p>
                       </div>
                     ))}
                   </div>
 
-                  {/* Ý kiến chuyên gia phản biện */}
+                  {/* Nút hành động */}
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                    <button
+                      onClick={handleExportDocx}
+                      className="h-8 px-3.5 text-[12px] font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 inline-flex items-center gap-1.5 transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Xuất Word
+                    </button>
+                    <button
+                      onClick={handleSaveMinutes}
+                      className="h-8 px-4 text-[12px] font-bold text-white bg-[#0A6EBD] hover:bg-[#085896] rounded-lg inline-flex items-center gap-1.5 transition-colors shadow-xs"
+                    >
+                      <Save className="w-3.5 h-3.5" /> Lưu & Ban hành
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ─── Tab: Phiếu chấm điểm ─── */}
+              {activeTab === 'SCORING' && (
+                <div className="p-5 space-y-4">
+                  {/* Tổng điểm */}
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                    <div>
+                      <p className="text-[13px] font-bold text-slate-900">Phiếu chấm điểm thẩm định đề cương</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Thang điểm 100 điểm — Đạt: từ 70 điểm trở lên</p>
+                    </div>
+                    <div className={`text-center w-20 py-2.5 rounded-xl border-2 ${
+                      totalScore >= 70
+                        ? 'border-emerald-400 bg-emerald-50'
+                        : 'border-slate-300 bg-slate-50'
+                    }`}>
+                      <p className={`text-[26px] leading-none font-bold font-mono ${
+                        totalScore >= 70 ? 'text-emerald-700' : 'text-slate-500'
+                      }`}>{totalScore}</p>
+                      <p className={`text-[10px] font-bold mt-0.5 uppercase tracking-wider ${
+                        totalScore >= 70 ? 'text-emerald-600' : 'text-slate-400'
+                      }`}>{totalScore >= 70 ? 'Đạt' : 'Chưa đủ'}</p>
+                    </div>
+                  </div>
+
+                  {/* Bảng tiêu chí */}
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-[12px]">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                          <th className="px-4 py-2.5 text-left font-bold text-slate-600 text-[11px] w-8">STT</th>
+                          <th className="px-4 py-2.5 text-left font-bold text-slate-600 text-[11px]">Tiêu chí đánh giá</th>
+                          <th className="px-4 py-2.5 text-center font-bold text-slate-600 text-[11px] w-20">Điểm tối đa</th>
+                          <th className="px-4 py-2.5 text-center font-bold text-slate-600 text-[11px] w-24">Điểm chấm</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {CRITERIA.map((c, i) => (
+                          <tr key={c.key} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-3 text-slate-400 font-mono text-[11px]">{i + 1}</td>
+                            <td className="px-4 py-3 font-medium text-slate-800">{c.label}</td>
+                            <td className="px-4 py-3 text-center text-slate-500 font-mono">{c.max}</td>
+                            <td className="px-4 py-3 text-center">
+                              <input
+                                type="number"
+                                min={0}
+                                max={c.max}
+                                value={scores[c.key] || 0}
+                                onChange={(e) => setScores({
+                                  ...scores,
+                                  [c.key]: Math.min(c.max, Math.max(0, Number(e.target.value))),
+                                })}
+                                className="w-14 px-2 py-1 text-center font-mono font-bold text-[13px] text-[#0A6EBD] border border-slate-300 rounded-lg outline-none focus:border-[#0A6EBD] bg-white transition"
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                        {/* Tổng cộng */}
+                        <tr className="bg-slate-50 border-t-2 border-slate-200">
+                          <td colSpan={2} className="px-4 py-2.5 font-bold text-slate-700 text-[12px]">Tổng điểm</td>
+                          <td className="px-4 py-2.5 text-center font-bold text-slate-700 font-mono">100</td>
+                          <td className="px-4 py-2.5 text-center font-bold text-[#0A6EBD] font-mono text-[14px]">
+                            {totalScore}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Nhận xét */}
                   <div className="space-y-1.5">
-                    <label className="font-bold text-slate-800 text-xs">Ý kiến nhận xét chuyên môn của Chuyên gia phản biện:</label>
+                    <label className="text-[12px] font-bold text-slate-700">
+                      Ý kiến nhận xét của thành viên Hội đồng
+                    </label>
                     <textarea
                       rows={3}
-                      value={expertComments}
-                      onChange={(e) => setExpertComments(e.target.value)}
-                      className="w-full p-2.5 rounded-lg border border-slate-300 text-xs bg-slate-50 focus:bg-white focus:border-[#0A6EBD] outline-none"
+                      value={expertComment}
+                      onChange={(e) => setExpertComment(e.target.value)}
+                      className="w-full px-3 py-2.5 text-[12px] text-slate-800 leading-relaxed border border-slate-300 rounded-lg outline-none focus:border-[#0A6EBD] focus:ring-1 focus:ring-[#0A6EBD] bg-white transition resize-none"
                     />
                   </div>
 
-                  <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                  <div className="flex justify-end pt-3 border-t border-slate-100">
                     <button
-                      onClick={() => alert('Đã ký nộp phiếu đánh giá điện tử thành công!')}
-                      className="px-4 py-2 bg-[#0A6EBD] hover:bg-[#085896] text-white font-semibold text-xs rounded-lg transition inline-flex items-center gap-1.5 shadow-xs"
+                      onClick={() => {
+                        const memberIdx = council.members.findIndex((m) => m.userId === currentUser.id);
+                        if (memberIdx === -1) {
+                          alert('Bạn không phải là thành viên chính thức của Hội đồng này.');
+                          return;
+                        }
+                        const newMembers = [...council.members];
+                        newMembers[memberIdx] = {
+                          ...newMembers[memberIdx],
+                          evaluationSubmitted: true,
+                        };
+                        repo.updateCouncil(council.id, { members: newMembers });
+                        alert('Đã ký và nộp phiếu chấm điểm thành công!');
+                        window.location.reload();
+                      }}
+                      className="h-8 px-4 text-[12px] font-bold text-white bg-[#0A6EBD] hover:bg-[#085896] rounded-lg inline-flex items-center gap-1.5 transition-colors shadow-xs"
                     >
-                      <Save className="w-4 h-4" /> Ký Nộp Phiếu Chấm Điểm Điện Tử
+                      <Save className="w-3.5 h-3.5" /> Ký & Nộp phiếu
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Tab 3: BIÊN BẢN BÀN GIAO & ỨNG DỤNG LÂM SÀNG (BM-CG-01) */}
+              {/* ─── Tab: Biên bản bàn giao ─── */}
               {activeTab === 'HANDOVER' && (
-                <div className="p-5 space-y-4 text-xs">
-                  <div className="pb-2 border-b border-slate-100">
-                    <h3 className="font-bold text-sm text-slate-900">
-                      Biên bản Bàn giao & Ứng dụng Kết quả Nghiên cứu vào Lâm sàng (BM-CG-01)
-                    </h3>
-                    <p className="text-[11px] text-slate-500">Chuyển giao phác đồ, quy trình kỹ thuật mới cho các Khoa/Phòng áp dụng điều trị</p>
+                <div className="p-5 space-y-4">
+                  <div className="pb-3 border-b border-slate-100">
+                    <p className="text-[13px] font-bold text-slate-900">Biên bản bàn giao và ứng dụng kết quả nghiên cứu</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Chuyển giao cho đơn vị thực hiện ứng dụng kết quả vào thực tiễn lâm sàng</p>
                   </div>
 
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <label className="font-bold text-slate-800">Khoa / Phòng tiếp nhận chuyển giao kỹ thuật:</label>
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[12px] font-bold text-slate-700">
+                        Đơn vị tiếp nhận
+                      </label>
                       <input
                         type="text"
-                        value={targetDepartment}
-                        onChange={(e) => setTargetDepartment(e.target.value)}
-                        className="w-full p-2.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-800"
+                        value={receivingDept}
+                        onChange={(e) => setReceivingDept(e.target.value)}
+                        className="w-full px-3 py-2 text-[12px] font-medium text-slate-800 border border-slate-300 rounded-lg outline-none focus:border-[#0A6EBD] transition"
                       />
                     </div>
-
-                    <div className="space-y-1">
-                      <label className="font-bold text-slate-800">Sản phẩm / Quy trình kỹ thuật chuyển giao:</label>
+                    <div className="space-y-1.5">
+                      <label className="text-[12px] font-bold text-slate-700">
+                        Sản phẩm / Quy trình chuyển giao
+                      </label>
                       <textarea
-                        rows={3}
-                        value={handoverContent}
-                        onChange={(e) => setHandoverContent(e.target.value)}
-                        className="w-full p-2.5 rounded-lg border border-slate-300 text-xs text-slate-800"
+                        rows={4}
+                        value={handoverDetail}
+                        onChange={(e) => setHandoverDetail(e.target.value)}
+                        className="w-full px-3 py-2.5 text-[12px] text-slate-800 leading-relaxed border border-slate-300 rounded-lg outline-none focus:border-[#0A6EBD] bg-white transition resize-none"
                       />
-                    </div>
-
-                    <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-emerald-800 flex items-start gap-2">
-                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <p className="leading-relaxed">
-                        Sản phẩm nghiên cứu khoa học sau khi nghiệm thu sẽ được Ban Giám đốc ban hành thành Quy trình kỹ thuật nội bộ của Bệnh viện Đa khoa Trung tâm.
-                      </p>
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                  <div className="flex justify-end pt-3 border-t border-slate-100">
                     <button
-                      onClick={() => alert('Đã phát hành Biên bản bàn giao kỹ thuật lâm sàng!')}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg transition inline-flex items-center gap-1.5 shadow-xs"
+                      onClick={() => alert('Đã phát hành biên bản bàn giao.')}
+                      className="h-8 px-4 text-[12px] font-bold text-white bg-[#0A6EBD] hover:bg-[#085896] rounded-lg inline-flex items-center gap-1.5 transition-colors shadow-xs"
                     >
-                      <Save className="w-4 h-4" /> Ký Phát Hành Biên Bản Bàn Giao (BM-CG-01)
+                      <Save className="w-3.5 h-3.5" /> Ký & Phát hành
                     </button>
                   </div>
                 </div>
               )}
+
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-xl p-12 text-center">
+              <FileText className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+              <p className="text-[13px] text-slate-400">Chọn đề tài từ danh sách để tiếp tục</p>
             </div>
           )}
         </div>
       </div>
-    </div>
+    </main>
   );
 }

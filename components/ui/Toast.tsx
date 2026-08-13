@@ -125,7 +125,7 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       {/* 1. TOP-RIGHT TOAST NOTIFICATION CONTAINER */}
       <div
         aria-live="polite"
-        className="fixed top-4 right-4 z-9999 flex flex-col gap-2.5 max-w-md w-full pointer-events-none px-2 sm:px-0"
+        className="fixed top-4 right-4 z-[9999] flex flex-col gap-2.5 max-w-md w-full pointer-events-none px-2 sm:px-0"
       >
         {toasts.map((t) => {
           const isSuccess = t.type === 'success';
@@ -172,7 +172,7 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
       {/* 2. CONFIRMATION DIALOG MODAL */}
       {confirmDialog && (
-        <div className="fixed inset-0 z-9999 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6">
               <div className="flex items-center gap-3.5 mb-4">

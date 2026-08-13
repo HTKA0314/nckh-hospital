@@ -74,91 +74,93 @@ export default function DashboardPage() {
     },
   ];
 
-  return (
+    return (
     <div className="space-y-5 max-w-[1600px] mx-auto text-slate-800">
       {/* 1. TOP 5 THẺ KPI CARD TỐI ƯU */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* KPI 1 */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-sky-300 transition-all">
+        {/* KPI 1 - Tổng số đề tài */}
+        <div className="bg-gradient-to-br from-white via-white to-sky-50/20 p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-sky-400/50 hover:shadow-md hover:shadow-sky-100/50 hover:-translate-y-1 transition-all duration-300 ease-out">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-semibold">Tổng số đề tài</span>
-            <div className="w-9 h-9 rounded-lg bg-sky-50 text-[#0A6EBD] flex items-center justify-center shrink-0">
+            <span className="text-xs text-slate-500 font-semibold tracking-wide">Tổng số đề tài</span>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/20">
               <FileText className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <div className="text-3xl font-extrabold font-mono text-slate-900">{stats.totalProjects}</div>
-            <span className="inline-flex items-center text-[11px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+          <div className="mt-3.5 flex items-baseline justify-between">
+            <div className="text-2xl font-bold font-sans text-slate-800 tracking-tight">{stats.totalProjects}</div>
+            <span className="inline-flex items-center text-[10.5px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100/40">
               <ArrowUpRight className="w-3 h-3 mr-0.5" /> +12%
             </span>
           </div>
-          <span className="text-[11px] text-slate-400 mt-1">Tất cả đề tài đăng ký</span>
+          <span className="text-[11px] text-slate-400 mt-1.5">Tất cả đề tài đăng ký</span>
         </div>
 
-        {/* KPI 2 */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-amber-300 transition-all">
+        {/* KPI 2 - Hồ sơ chờ xử lý */}
+        <div className="bg-gradient-to-br from-white via-white to-amber-50/20 p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-amber-400/50 hover:shadow-md hover:shadow-amber-100/50 hover:-translate-y-1 transition-all duration-300 ease-out">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-semibold">Hồ sơ chờ xử lý</span>
-            <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+            <span className="text-xs text-slate-500 font-semibold tracking-wide">Hồ sơ chờ xử lý</span>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 text-white flex items-center justify-center shrink-0 shadow-sm shadow-amber-500/20">
               <Clock className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <div className="text-3xl font-extrabold font-mono text-slate-900">{stats.underReviewProposals}</div>
-            <span className="text-[11px] font-medium text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
+          <div className="mt-3.5 flex items-baseline justify-between">
+            <div className="text-2xl font-bold font-sans text-slate-800 tracking-tight">{stats.underReviewProposals}</div>
+            <span className="inline-flex items-center text-[10.5px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100/40">
               Cần ưu tiên
             </span>
           </div>
-          <span className="text-[11px] text-slate-400 mt-1">Cần thẩm định & duyệt</span>
+          <span className="text-[11px] text-slate-400 mt-1.5">Cần thẩm định & duyệt</span>
         </div>
 
-        {/* KPI 3 */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-teal-300 transition-all">
+        {/* KPI 3 - Đang thực hiện */}
+        <div className="bg-gradient-to-br from-white via-white to-emerald-50/20 p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-emerald-400/50 hover:shadow-md hover:shadow-emerald-100/50 hover:-translate-y-1 transition-all duration-300 ease-out">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-semibold">Đang thực hiện</span>
-            <div className="w-9 h-9 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
+            <span className="text-xs text-slate-500 font-semibold tracking-wide">Đang thực hiện</span>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-emerald-500/20">
               <TrendingUp className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <div className="text-3xl font-extrabold font-mono text-slate-900">{stats.inProgressProjects}</div>
-            <span className="text-[11px] font-medium text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded">
+          <div className="mt-3.5 flex items-baseline justify-between">
+            <div className="text-2xl font-bold font-sans text-slate-800 tracking-tight">{stats.inProgressProjects}</div>
+            <span className="inline-flex items-center text-[10.5px] font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full border border-teal-100/40">
               Đúng tiến độ
             </span>
           </div>
-          <span className="text-[11px] text-slate-400 mt-1">Đang nghiên cứu thực địa</span>
+          <span className="text-[11px] text-slate-400 mt-1.5">Đang nghiên cứu thực địa</span>
         </div>
 
-        {/* KPI 4 */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-rose-300 transition-all">
+        {/* KPI 4 - Chậm tiến độ */}
+        <div className="bg-gradient-to-br from-white via-white to-rose-50/20 p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-rose-400/50 hover:shadow-md hover:shadow-rose-100/50 hover:-translate-y-1 transition-all duration-300 ease-out">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-semibold">Chậm tiến độ</span>
-            <div className="w-9 h-9 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+            <span className="text-xs text-slate-500 font-semibold tracking-wide">Chậm tiến độ</span>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-rose-400 to-red-500 text-white flex items-center justify-center shrink-0 shadow-sm shadow-rose-500/20">
               <AlertTriangle className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <div className="text-3xl font-extrabold font-mono text-rose-600">{stats.delayedProjects}</div>
-            <span className="text-[11px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded">
+          <div className="mt-3.5 flex items-baseline justify-between">
+            <div className="text-2xl font-bold font-sans text-rose-600 tracking-tight">{stats.delayedProjects}</div>
+            <span className="inline-flex items-center text-[10.5px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100/40">
               Cảnh báo
             </span>
           </div>
-          <span className="text-[11px] text-slate-400 mt-1">Quá hạn nộp báo cáo</span>
+          <span className="text-[11px] text-slate-400 mt-1.5">Quá hạn nộp báo cáo</span>
         </div>
 
-        {/* KPI 5 */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-purple-300 transition-all">
+        {/* KPI 5 - Kinh phí cấp BV */}
+        <div className="bg-gradient-to-br from-white via-white to-purple-50/20 p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between hover:border-purple-400/50 hover:shadow-md hover:shadow-purple-100/50 hover:-translate-y-1 transition-all duration-300 ease-out">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500 font-semibold">Kinh phí cấp BV</span>
-            <div className="w-9 h-9 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+            <span className="text-xs text-slate-500 font-semibold tracking-wide">Kinh phí cấp BV</span>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-400 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-indigo-500/20">
               <DollarSign className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <div className="text-2xl font-extrabold font-mono text-slate-900">1.25 Tỷ</div>
-            <span className="text-[10px] font-mono text-slate-400">VND</span>
+          <div className="mt-3.5 flex items-baseline justify-between">
+            <div className="text-2xl font-bold font-sans text-slate-800 tracking-tight">
+              1.25 <span className="text-lg font-medium text-slate-500">Tỷ</span>
+            </div>
+            <span className="text-[10px] font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-100/40">VND</span>
           </div>
-          <span className="text-[11px] text-slate-400 mt-1">Đã giải ngân 65%</span>
+          <span className="text-[11px] text-slate-400 mt-1.5">Đã giải ngân 65%</span>
         </div>
       </div>
 
