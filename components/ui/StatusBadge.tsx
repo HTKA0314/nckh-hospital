@@ -1,205 +1,430 @@
 'use client';
 
 import React from 'react';
-import { ProjectStatus, ProposalStatus } from '@/lib/types';
+
+type BadgeType =
+  | 'PROJECT'
+  | 'PROPOSAL'
+  | 'COUNCIL'
+  | 'ETHICS'
+  | 'PROGRESS'
+  | 'CHANGE'
+  | 'ACCEPTANCE'
+  | 'FINANCE'
+  | 'ROUND';
 
 interface BadgeProps {
-  status: ProjectStatus | ProposalStatus | string;
-  type?: 'PROJECT' | 'PROPOSAL' | 'COUNCIL' | 'ETHICS' | 'PROGRESS' | 'CHANGE' | 'FINANCE';
+  status?: string;
+  type?: BadgeType;
 }
 
-export const StatusBadge: React.FC<BadgeProps> = ({ status }) => {
-  let label = status;
-  let colorClass = 'bg-slate-100 text-slate-700 border-slate-300';
+type BadgeConfig = {
+  label: string;
+  className: string;
+};
 
-  switch (status) {
-    // 1. Trạng thái Đề tài & Hồ sơ đăng ký
-    case 'DRAFT':
-      label = 'Chờ nộp đề cương';
-      colorClass = 'bg-slate-100 text-slate-700 border-slate-300';
-      break;
-    case 'SUBMITTED_PROPOSAL':
-      label = 'Chờ duyệt đề xuất';
-      colorClass = 'bg-blue-50 text-[#0A6EBD] border-blue-200';
-      break;
-    case 'UNDER_REVIEW':
-      label = 'Đang thẩm định';
-      colorClass = 'bg-amber-50 text-amber-800 border-amber-300';
-      break;
-    case 'SUBMITTED':
-      label = 'Đã nộp hồ sơ';
-      colorClass = 'bg-blue-50 text-[#0A6EBD] border-blue-200';
-      break;
-    case 'UNDER_ADMIN_REVIEW':
-      label = 'Đang kiểm tra HĐ';
-      colorClass = 'bg-amber-50 text-amber-800 border-amber-300';
-      break;
-    case 'ADMIN_VALIDATED':
-      label = 'Chờ xét duyệt đề cương';
-      colorClass = 'bg-sky-50 text-[#0A6EBD] border-[#B8D7F5] font-semibold';
-      break;
-    case 'REVISION_REQUIRED':
-      label = 'Yêu cầu bổ sung';
-      colorClass = 'bg-rose-50 text-rose-700 border-rose-300 font-bold';
-      break;
-    case 'PROPOSAL_REVISION_REQUIRED':
-      label = 'Bổ sung đề xuất';
-      colorClass = 'bg-rose-50 text-rose-700 border-rose-300 font-bold';
-      break;
-    case 'RESUBMITTED':
-      label = 'Đã nộp lại';
-      colorClass = 'bg-indigo-50 text-indigo-700 border-indigo-200';
-      break;
-    case 'VALID':
-      label = 'Hồ sơ hợp lệ';
-      colorClass = 'bg-emerald-50 text-emerald-800 border-emerald-300';
-      break;
-    case 'PROPOSAL_APPROVED':
-      label = 'Đã duyệt đề cương';
-      colorClass = 'bg-blue-50 text-[#0A6EBD] border-[#B8D7F5] font-semibold';
-      break;
-    case 'WAITING_ASSIGNMENT':
-      label = 'Chờ giao nhiệm vụ';
-      colorClass = 'bg-violet-50 text-violet-700 border-violet-200 font-semibold';
-      break;
-    case 'APPROVED':
-      label = 'Đã phê duyệt';
-      colorClass = 'bg-emerald-50 text-emerald-800 border-emerald-300 font-semibold';
-      break;
-    case 'ASSIGNED':
-      label = 'Đã giao nhiệm vụ';
-      colorClass = 'bg-sky-50 text-sky-700 border-sky-200 font-semibold';
-      break;
-    case 'IN_PROGRESS':
-      label = 'Đang thực hiện';
-      colorClass = 'bg-sky-50 text-sky-800 border-sky-300 font-semibold';
-      break;
-    case 'WAITING_ACCEPTANCE':
-      label = 'Chờ nghiệm thu';
-      colorClass = 'bg-amber-50 text-amber-800 border-amber-300 font-semibold';
-      break;
-    case 'ACCEPTED':
-      label = 'Đã nghiệm thu';
-      colorClass = 'bg-emerald-50 text-emerald-800 border-emerald-300 font-semibold';
-      break;
-    case 'RECOGNIZED':
-      label = 'Công nhận kết quả';
-      colorClass = 'bg-teal-50 text-teal-800 border-teal-300 font-bold';
-      break;
-    case 'CLOSED':
-      label = 'Đã đóng hồ sơ';
-      colorClass = 'bg-slate-100 text-slate-700 border-slate-300';
-      break;
-    case 'ARCHIVED':
-      label = 'Đã lưu trữ';
-      colorClass = 'bg-slate-100 text-slate-600 border-slate-300';
-      break;
-    case 'REJECTED':
-      label = 'Bị từ chối';
-      colorClass = 'bg-red-50 text-red-700 border-red-200 font-semibold';
-      break;
-    case 'TERMINATED':
-      label = 'Chấm dứt trước hạn';
-      colorClass = 'bg-rose-50 text-rose-800 border-rose-300 font-semibold';
-      break;
-    case 'SUSPENDED':
-      label = 'Tạm dừng thực hiện';
-      colorClass = 'bg-amber-50 text-amber-800 border-amber-300';
-      break;
-    case 'CANCELLED':
-      label = 'Đã hủy';
-      colorClass = 'bg-red-50 text-red-600 border-red-200';
-      break;
+const DEFAULT_CLASS =
+  'bg-slate-100 text-slate-600 border-slate-200';
 
-    // 2. Trạng thái Hội đồng khoa học
-    case 'ESTABLISHED':
-      label = 'Đã thành lập';
-      colorClass = 'bg-blue-50 text-[#0A6EBD] border-blue-200 font-semibold';
-      break;
-    case 'MEETING_SCHEDULED':
-      label = 'Đã lên lịch họp';
-      colorClass = 'bg-amber-50 text-amber-800 border-amber-300';
-      break;
-    case 'IN_SESSION':
-      label = 'Đang họp hội đồng';
-      colorClass = 'bg-purple-50 text-purple-700 border-purple-300 font-bold';
-      break;
-    case 'CONCLUDED':
-      label = 'Đã có kết luận';
-      colorClass = 'bg-emerald-50 text-emerald-800 border-emerald-300 font-semibold';
-      break;
-    case 'DISSOLVED':
-      label = 'Đã giải thể';
-      colorClass = 'bg-slate-100 text-slate-600 border-slate-300';
-      break;
+const BLUE =
+  'bg-blue-50 text-[#0A6EBD] border-blue-200';
 
-    // 3. Trạng thái Hội đồng Đạo đức
-    case 'ETHICS_APPROVED':
-      label = 'Đạt chuẩn đạo đức';
-      colorClass = 'bg-emerald-50 text-emerald-800 border-emerald-300 font-semibold';
-      break;
-    case 'DOSSIER_SUBMITTED':
-      label = 'Chờ duyệt đạo đức';
-      colorClass = 'bg-amber-50 text-amber-800 border-amber-300';
-      break;
-    case 'ETHICS_REVISION_REQUIRED':
-      label = 'Bổ sung hồ sơ đạo đức';
-      colorClass = 'bg-rose-50 text-rose-700 border-rose-300';
-      break;
-    case 'NOT_REQUIRED':
-      label = 'Không thuộc diện';
-      colorClass = 'bg-slate-100 text-slate-600 border-slate-300';
-      break;
+const SKY =
+  'bg-sky-50 text-sky-700 border-sky-200';
 
-    // 4. Trạng thái Đợt đăng ký
-    case 'OPEN':
-      label = 'Đang mở nộp';
-      colorClass = 'bg-emerald-50 text-emerald-700 border-emerald-300 font-semibold';
-      break;
-    case 'CLOSED_ROUND':
-      label = 'Đã đóng đợt';
-      colorClass = 'bg-slate-100 text-slate-600 border-slate-300';
-      break;
-    case 'EVALUATION':
-      label = 'Đang xét duyệt';
-      colorClass = 'bg-amber-50 text-amber-800 border-amber-300';
-      break;
+const AMBER =
+  'bg-amber-50 text-amber-800 border-amber-300';
 
-    // 5. Trạng thái Yêu cầu điều chỉnh & Tài chính
-    case 'PENDING':
-      label = 'Chờ thẩm định';
-      colorClass = 'bg-amber-50 text-amber-800 border-amber-300';
-      break;
-    case 'DISBURSED':
-      label = 'Đã giải ngân';
-      colorClass = 'bg-blue-50 text-[#0A6EBD] border-blue-200 font-semibold';
-      break;
-    case 'SETTLED':
-      label = 'Đã quyết toán';
-      colorClass = 'bg-emerald-50 text-emerald-800 border-emerald-300 font-semibold';
-      break;
+const EMERALD =
+  'bg-emerald-50 text-emerald-800 border-emerald-300';
 
-    // 6. Trạng thái Thành viên / Nhân sự
-    case 'ACTIVE':
-      label = 'Đang hoạt động';
-      colorClass = 'bg-emerald-50 text-emerald-700 border-emerald-300 font-semibold';
-      break;
-    case 'INACTIVE':
-      label = 'Không hoạt động';
-      colorClass = 'bg-slate-100 text-slate-600 border-slate-300';
-      break;
+const ROSE =
+  'bg-rose-50 text-rose-700 border-rose-300';
 
-    default:
-      label = status?.replace(/_/g, ' ') ?? '—';
-      colorClass = 'bg-slate-100 text-slate-500 border-slate-200';
+const RED =
+  'bg-red-50 text-red-700 border-red-200';
+
+const VIOLET =
+  'bg-violet-50 text-violet-700 border-violet-200';
+
+const TEAL =
+  'bg-teal-50 text-teal-800 border-teal-300';
+
+const SLATE =
+  'bg-slate-100 text-slate-700 border-slate-300';
+
+const PROJECT_STATUS_MAP: Record<string, BadgeConfig> = {
+  DRAFT: {
+    label: 'Bản nháp',
+    className: SLATE,
+  },
+  SUBMITTED: {
+    label: 'Đã nộp hồ sơ',
+    className: BLUE,
+  },
+  WAITING_ASSIGNMENT: {
+    label: 'Chờ quyết định giao',
+    className: VIOLET,
+  },
+  IN_PROGRESS: {
+    label: 'Đang thực hiện',
+    className: SKY,
+  },
+  WAITING_ACCEPTANCE: {
+    label: 'Chờ nghiệm thu',
+    className: AMBER,
+  },
+  ACCEPTED: {
+    label: 'Đã nghiệm thu',
+    className: EMERALD,
+  },
+  RECOGNIZED: {
+    label: 'Đã công nhận kết quả',
+    className: TEAL,
+  },
+  CLOSED: {
+    label: 'Đã đóng hồ sơ',
+    className: SLATE,
+  },
+  ARCHIVED: {
+    label: 'Đã lưu trữ',
+    className: SLATE,
+  },
+  SUSPENDED: {
+    label: 'Tạm dừng',
+    className: AMBER,
+  },
+  TERMINATED: {
+    label: 'Đã chấm dứt',
+    className: ROSE,
+  },
+  REJECTED: {
+    label: 'Bị từ chối',
+    className: RED,
+  },
+};
+
+const PROPOSAL_STATUS_MAP: Record<string, BadgeConfig> = {
+  DRAFT: {
+    label: 'Bản nháp',
+    className: SLATE,
+  },
+  SUBMITTED: {
+    label: 'Chờ tiếp nhận',
+    className: BLUE,
+  },
+  UNDER_ADMIN_REVIEW: {
+    label: 'Đang kiểm tra hồ sơ',
+    className: AMBER,
+  },
+  REVISION_REQUIRED: {
+    label: 'Yêu cầu bổ sung',
+    className: ROSE,
+  },
+  RESUBMITTED: {
+    label: 'Đã nộp lại',
+    className: VIOLET,
+  },
+  ADMIN_VALIDATED: {
+    label: 'Hồ sơ hợp lệ',
+    className: EMERALD,
+  },
+  OUTLINE_SUBMITTED: {
+    label: 'Đã nộp đề cương',
+    className: BLUE,
+  },
+  UNDER_PROPOSAL_REVIEW: {
+    label: 'Đang xét duyệt đề cương',
+    className: AMBER,
+  },
+  PROPOSAL_REVISION_REQUIRED: {
+    label: 'Yêu cầu chỉnh sửa đề cương',
+    className: ROSE,
+  },
+  PROPOSAL_RESUBMITTED: {
+    label: 'Đã nộp lại đề cương',
+    className: VIOLET,
+  },
+  UNDER_PROPOSAL_REVISION_REVIEW: {
+    label: 'Đang kiểm tra đề cương chỉnh sửa',
+    className: AMBER,
+  },
+  PROPOSAL_APPROVED: {
+    label: 'Đề cương đã thông qua',
+    className: EMERALD,
+  },
+  REJECTED: {
+    label: 'Không thông qua',
+    className: RED,
+  },
+};
+
+const COUNCIL_STATUS_MAP: Record<string, BadgeConfig> = {
+  DRAFT: {
+    label: 'Dự thảo',
+    className: SLATE,
+  },
+  ESTABLISHED: {
+    label: 'Đã thành lập',
+    className: BLUE,
+  },
+  EVALUATING: {
+    label: 'Đang đánh giá',
+    className: AMBER,
+  },
+  MINUTES_DRAFTED: {
+    label: 'Đang hoàn thiện biên bản',
+    className: VIOLET,
+  },
+  CONCLUDED: {
+    label: 'Đã kết luận',
+    className: EMERALD,
+  },
+  DISSOLVED: {
+    label: 'Đã giải thể',
+    className: SLATE,
+  },
+};
+
+const ETHICS_STATUS_MAP: Record<string, BadgeConfig> = {
+  NOT_REQUIRED: {
+    label: 'Không yêu cầu',
+    className: SLATE,
+  },
+  SCREENING_IN_PROGRESS: {
+    label: 'Đang sàng lọc',
+    className: AMBER,
+  },
+  DOSSIER_SUBMITTED: {
+    label: 'Đã nộp hồ sơ',
+    className: BLUE,
+  },
+  UNDER_ETHICS_REVIEW: {
+    label: 'Đang thẩm định đạo đức',
+    className: AMBER,
+  },
+  ETHICS_REVISION_REQUIRED: {
+    label: 'Yêu cầu bổ sung',
+    className: ROSE,
+  },
+  CONDITIONALLY_APPROVED: {
+    label: 'Chấp thuận có điều kiện',
+    className: VIOLET,
+  },
+  ETHICS_APPROVED: {
+    label: 'Đã phê duyệt',
+    className: EMERALD,
+  },
+  ETHICS_REJECTED: {
+    label: 'Không phê duyệt',
+    className: RED,
+  },
+  EXPIRED: {
+    label: 'Hết hiệu lực',
+    className: AMBER,
+  },
+  SUSPENDED: {
+    label: 'Đình chỉ',
+    className: AMBER,
+  },
+  WITHDRAWN: {
+    label: 'Đã rút hồ sơ',
+    className: SLATE,
+  },
+  TERMINATED: {
+    label: 'Đã thu hồi',
+    className: RED,
+  },
+};
+
+const PROGRESS_STATUS_MAP: Record<string, BadgeConfig> = {
+  DRAFT: {
+    label: 'Bản nháp',
+    className: SLATE,
+  },
+  SUBMITTED: {
+    label: 'Đã nộp',
+    className: BLUE,
+  },
+  UNDER_REVIEW: {
+    label: 'Đang kiểm tra',
+    className: AMBER,
+  },
+  REVISION_REQUIRED: {
+    label: 'Yêu cầu chỉnh sửa',
+    className: ROSE,
+  },
+  APPROVED: {
+    label: 'Đã xác nhận',
+    className: EMERALD,
+  },
+  REJECTED: {
+    label: 'Không chấp nhận',
+    className: RED,
+  },
+};
+
+const CHANGE_STATUS_MAP: Record<string, BadgeConfig> = {
+  DRAFT: {
+    label: 'Bản nháp',
+    className: SLATE,
+  },
+  SUBMITTED: {
+    label: 'Đã gửi yêu cầu',
+    className: BLUE,
+  },
+  UNDER_REVIEW: {
+    label: 'Đang xem xét',
+    className: AMBER,
+  },
+  REVISION_REQUIRED: {
+    label: 'Yêu cầu bổ sung',
+    className: ROSE,
+  },
+  RESUBMITTED: {
+    label: 'Đã bổ sung',
+    className: VIOLET,
+  },
+  APPROVED: {
+    label: 'Đã phê duyệt',
+    className: EMERALD,
+  },
+  REJECTED: {
+    label: 'Không phê duyệt',
+    className: RED,
+  },
+};
+
+const ACCEPTANCE_STATUS_MAP: Record<string, BadgeConfig> = {
+  NOT_SUBMITTED: {
+    label: 'Chưa nộp',
+    className: SLATE,
+  },
+  DRAFT: {
+    label: 'Bản nháp',
+    className: SLATE,
+  },
+  SUBMITTED: {
+    label: 'Đã nộp hồ sơ',
+    className: BLUE,
+  },
+  UNDER_ADMIN_REVIEW: {
+    label: 'Đang kiểm tra',
+    className: AMBER,
+  },
+  REVISION_REQUIRED: {
+    label: 'Yêu cầu bổ sung',
+    className: ROSE,
+  },
+  RESUBMITTED: {
+    label: 'Đã nộp lại',
+    className: VIOLET,
+  },
+  ELIGIBLE_FOR_ACCEPTANCE: {
+    label: 'Đủ điều kiện nghiệm thu',
+    className: EMERALD,
+  },
+  FORWARDED_TO_COUNCIL: {
+    label: 'Đã chuyển Hội đồng',
+    className: BLUE,
+  },
+};
+
+const FINANCE_STATUS_MAP: Record<string, BadgeConfig> = {
+  PENDING: {
+    label: 'Chờ cấp kinh phí',
+    className: AMBER,
+  },
+  ACTIVE: {
+    label: 'Đang thực hiện',
+    className: BLUE,
+  },
+  AWAITING_FINALIZATION: {
+    label: 'Chờ quyết toán',
+    className: AMBER,
+  },
+  FINALIZED: {
+    label: 'Đã quyết toán',
+    className: EMERALD,
+  },
+  CLOSED: {
+    label: 'Đã đóng tài chính',
+    className: SLATE,
+  },
+};
+
+const ROUND_STATUS_MAP: Record<string, BadgeConfig> = {
+  DRAFT: {
+    label: 'Dự thảo',
+    className: SLATE,
+  },
+  OPEN: {
+    label: 'Đang mở',
+    className: EMERALD,
+  },
+  CLOSED: {
+    label: 'Đã đóng',
+    className: SLATE,
+  },
+};
+
+const STATUS_MAPS: Record<
+  BadgeType,
+  Record<string, BadgeConfig>
+> = {
+  PROJECT: PROJECT_STATUS_MAP,
+  PROPOSAL: PROPOSAL_STATUS_MAP,
+  COUNCIL: COUNCIL_STATUS_MAP,
+  ETHICS: ETHICS_STATUS_MAP,
+  PROGRESS: PROGRESS_STATUS_MAP,
+  CHANGE: CHANGE_STATUS_MAP,
+  ACCEPTANCE: ACCEPTANCE_STATUS_MAP,
+  FINANCE: FINANCE_STATUS_MAP,
+  ROUND: ROUND_STATUS_MAP,
+};
+
+const FALLBACK_STATUS_MAP: Record<string, BadgeConfig> = {
+  ACTIVE: {
+    label: 'Đang hoạt động',
+    className: EMERALD,
+  },
+  INACTIVE: {
+    label: 'Không hoạt động',
+    className: SLATE,
+  },
+  CANCELLED: {
+    label: 'Đã hủy',
+    className: RED,
+  },
+};
+
+export const StatusBadge: React.FC<BadgeProps> = ({
+  status,
+  type,
+}) => {
+  if (!status) {
+    return (
+      <span
+        className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] border ${DEFAULT_CLASS}`}
+      >
+        —
+      </span>
+    );
   }
+
+  const config =
+    (type ? STATUS_MAPS[type]?.[status] : undefined) ||
+    FALLBACK_STATUS_MAP[status] || {
+      label: status.replace(/_/g, ' '),
+      className: DEFAULT_CLASS,
+    };
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] border whitespace-nowrap ${colorClass}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold border whitespace-nowrap ${config.className}`}
     >
-      <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80"></span>
-      {label}
+      <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />
+      {config.label}
     </span>
   );
 };

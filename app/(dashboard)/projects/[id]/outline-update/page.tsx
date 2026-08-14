@@ -7,7 +7,6 @@ import { repo } from '@/lib/repository';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/Toast';
 import { ResearchProject, DocumentType } from '@/lib/types';
-import { canSubmitResubmission } from '@/lib/utils/permissions';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -63,16 +62,36 @@ export default function OutlineUpdatePage() {
       const p = repo.getProjectById(params.id as string);
       if (p) {
         setProject(p);
+        setUrgencyExplanation(p.urgencyExplanation || '');
+        setExpectedObjectives(p.expectedObjectives || p.summary || '');
+        setResearchDesign(p.researchDesign || '');
+        setResearchSubjects(p.researchSubjects || '');
+        setResearchLocation(p.researchLocation || '');
+        setSelectionCriteria(p.selectionCriteria || '');
+        setExclusionCriteria(p.exclusionCriteria || '');
+        setRecruitmentAndSampleCollection(p.recruitmentAndSampleCollection || '');
+        setResearchVariables(p.researchVariables || '');
+        setSampleSizeEstimation(p.sampleSizeEstimation || '');
+        setStudyTimeEstimation(p.studyTimeEstimation || '');
+        setExpectedProducts(p.expectedProducts || '');
+        setHospitalApplication(p.hospitalApplication || '');
         setEstimatedBudget(p.estimatedBudget || 0);
+        setInvolvesHumanSubjects(Boolean(p.ethicsRequired));
       }
     }
   }, [params.id]);
 
-  if (project && !canSubmitResubmission(currentUser, project)) {
+  const canSubmitOutline =
+    Boolean(project) &&
+    currentUser?.role === 'RESEARCHER' &&
+    currentUser.id === project?.principalInvestigatorId &&
+    project?.proposalStatus === 'ADMIN_VALIDATED';
+
+  if (project && !canSubmitOutline) {
     return (
       <div className="text-center py-12 text-slate-500 bg-white rounded-md border border-[#D8DEE6]">
         <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-        <p className="font-bold text-slate-800">Bạn không có quyền sửa / nộp bổ sung thuyết minh cho đề tài này.</p>
+        <p className="font-bold text-slate-800">Hồ sơ không ở trạng thái cho phép hoàn thiện và nộp đề cương.</p>
       </div>
     );
   }
@@ -100,10 +119,20 @@ export default function OutlineUpdatePage() {
   };
 
   const handleSubmit = () => {
+    if (!canSubmitOutline) {
+      warning('Hồ sơ không ở trạng thái cho phép nộp đề cương.');
+      return;
+    }
+
     if (!urgencyExplanation.trim() || !expectedObjectives.trim()) {
       warning('Vui lòng nhập Tính cấp thiết và Mục tiêu nghiên cứu.', 'Thiếu thông tin');
       return;
     }
+    if (estimatedBudget < 0) {
+      warning('Dự toán kinh phí không được là số âm.');
+      return;
+    }
+
     if (uploadedFiles.length === 0) {
       warning('Vui lòng tải lên file Thuyết minh đề cương chi tiết.', 'Thiếu tài liệu');
       return;
@@ -125,11 +154,17 @@ export default function OutlineUpdatePage() {
       expectedProducts,
       hospitalApplication,
       estimatedBudget,
-      approvedBudget: estimatedBudget,
+      // approvedBudget chỉ được cập nhật sau quyết định có thẩm quyền.
       ethicsRequired: isEthicsRequired,
-      ethicsStatus: isEthicsRequired ? 'DOSSIER_SUBMITTED' : 'NOT_REQUIRED',
-      proposalStatus: 'UNDER_ADMIN_REVIEW' as any,
-      status: 'UNDER_REVIEW' as any,
+      // Nộp đề cương không đồng nghĩa đã nộp hồ sơ đạo đức.
+      ethicsStatus:
+        project.ethicsStatus === 'ETHICS_APPROVED'
+          ? project.ethicsStatus
+          : isEthicsRequired
+            ? (project.ethicsStatus === 'NOT_REQUIRED' ? 'SCREENING_IN_PROGRESS' : project.ethicsStatus)
+            : 'NOT_REQUIRED',
+      proposalStatus: 'OUTLINE_SUBMITTED',
+      status: project.status,
       documents: [
         ...(project.documents || []),
         ...uploadedFiles.map((f, i) => ({
@@ -148,8 +183,8 @@ export default function OutlineUpdatePage() {
               fileSize: f.size,
               uploadedBy: currentUser.id,
               uploadedByName: currentUser.fullName,
-              uploadedAt: new Date().toLocaleString('vi-VN'),
-              downloadUrl: '#',
+              uploadedAt: new Date().toISOString(),
+              downloadUrl: '',
               isCurrent: true,
             },
           ],
@@ -165,6 +200,8 @@ export default function OutlineUpdatePage() {
       actionCode: 'SUBMIT_OUTLINE',
       entityType: 'PROJECT',
       entityId: project.id,
+      fromStatus: project.proposalStatus,
+      toStatus: 'OUTLINE_SUBMITTED',
       notes: `Nộp bổ sung thuyết minh đề cương chi tiết cho đề tài ${project.proposalCode}`,
     });
 
@@ -172,14 +209,14 @@ export default function OutlineUpdatePage() {
     repo.getUsers().filter(u => u.role === 'RESEARCH_OFFICE').forEach(u => {
       repo.addNotification({
         userId: u.id,
-        title: `Đề tài ${project.proposalCode} đã nộp bổ sung Thuyết minh`,
-        content: `Đề tài ${project.title} vừa nộp bổ sung Thuyết minh đề cương. Vui lòng thẩm định.`,
+        title: `Đề tài ${project.proposalCode} đã nộp Thuyết minh đề cương`,
+        content: `Đề tài ${project.title} vừa nộp Thuyết minh đề cương. Vui lòng thực hiện bước tổ chức xét duyệt theo quy trình.`,
         type: 'INFO',
         link: `/projects/${project.id}`,
       });
     });
 
-    success('Nộp bổ sung thuyết minh thành công! Hồ sơ đã được chuyển đến Phòng Quản lý NCKH.');
+    success('Đã nộp Thuyết minh đề cương. Hồ sơ chuyển sang trạng thái chờ xét duyệt đề cương.');
     router.push('/my-projects');
   };
 
@@ -196,7 +233,7 @@ export default function OutlineUpdatePage() {
         </Link>
         <div>
           <h1 className="text-lg font-bold text-slate-800">
-            Bổ sung Thuyết minh Đề cương chi tiết
+            Hoàn thiện Thuyết minh Đề cương
           </h1>
           <p className="text-[13px] text-slate-500 mt-0.5 font-medium">
             Đề tài: {project.title}
@@ -207,8 +244,8 @@ export default function OutlineUpdatePage() {
       <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 flex gap-3 text-sky-900">
         <AlertCircle className="w-5 h-5 shrink-0 text-sky-600" />
         <div className="text-sm">
-          <p className="font-bold mb-1">Hướng dẫn Bổ sung hồ sơ</p>
-          <p className="opacity-90">Đề xuất đề tài của bạn đã được duyệt. Vui lòng cung cấp chi tiết nội dung nghiên cứu, dự toán kinh phí và tải lên các biểu mẫu bắt buộc (Thuyết minh đề cương BM2, Dự toán BM3) để Hội đồng Xét duyệt Đề cương xem xét.</p>
+          <p className="font-bold mb-1">Hoàn thiện hồ sơ đề cương</p>
+          <p className="opacity-90">Hồ sơ đăng ký đã được xác nhận hợp lệ. Hoàn thiện nội dung nghiên cứu, dự toán kinh phí và các tài liệu bắt buộc để nộp đề cương vào bước xét duyệt khoa học.</p>
         </div>
       </div>
 

@@ -2,19 +2,29 @@
 
 import React, { Suspense, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  AlertTriangle,
   Calendar,
   Eye,
   Filter,
   MapPin,
-  MoreVertical,
   PenTool,
   Plus,
   Search,
   Video,
   X,
+  Printer,
+  FileSpreadsheet,
+  Users,
+  CheckCircle2,
+  Clock,
+  Building2,
+  FileText,
+  Trash2,
+  ChevronRight,
+  ShieldCheck,
+  Award,
+  Check,
 } from 'lucide-react';
 
 import { repo } from '@/lib/repository';
@@ -33,6 +43,14 @@ import {
 } from '@/lib/types';
 
 type CouncilFilter = 'ALL' | CouncilType;
+type CouncilStatusFilter =
+  | 'ALL'
+  | 'DRAFT'
+  | 'ESTABLISHED'
+  | 'EVALUATING'
+  | 'MINUTES_DRAFTED'
+  | 'CONCLUDED'
+  | 'DISSOLVED';
 type ModalStep = 1 | 2 | 3;
 
 type ReviewerAssignmentDraft = {
@@ -52,10 +70,10 @@ type CouncilForm = {
   type: CouncilType;
   specialtyCluster: string;
   establishmentDecisionNumber: string;
-  decisionDate: string;
-  decisionStatus: 'DRAFT' | 'SUBMITTED' | 'ISSUED';
-  signatoryName: string;
-  signatoryRole: string;
+  establishmentDecisionDate: string;
+  establishmentDecisionStatus: 'DRAFT' | 'SUBMITTED' | 'ISSUED';
+  establishmentSignatoryName: string;
+  establishmentSignatoryRole: string;
   meetingDate: string;
   meetingTime: string;
   meetingFormat: 'OFFLINE' | 'ONLINE' | 'HYBRID';
@@ -70,7 +88,7 @@ type CouncilForm = {
 };
 
 const INPUT_CLASS =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-[#0A6EBD] focus:ring-2 focus:ring-sky-100 disabled:bg-slate-50 disabled:text-slate-500';
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs outline-none transition focus:border-[#0A6EBD] focus:ring-2 focus:ring-sky-100 disabled:bg-slate-50 disabled:text-slate-500 font-medium';
 
 const SPECIALTY_CLUSTERS = [
   'Đa chuyên khoa / Toàn viện',
@@ -85,21 +103,32 @@ function getToday() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function formatCouncilDate(value?: string) {
+  if (!value) return 'Chưa cập nhật';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date);
+}
+
 function createEmptyForm(councilCount: number): CouncilForm {
   return {
-    code: `HD-${new Date().getFullYear()}-${String(councilCount + 1).padStart(3, '0')}`,
+    code: `HĐ-${new Date().getFullYear()}-${String(councilCount + 1).padStart(3, '0')}`,
     name: '',
     type: 'PROPOSAL_REVIEW',
     specialtyCluster: SPECIALTY_CLUSTERS[0],
     establishmentDecisionNumber: '',
-    decisionDate: getToday(),
-    decisionStatus: 'DRAFT',
-    signatoryName: '',
-    signatoryRole: 'Giám đốc Bệnh viện',
+    establishmentDecisionDate: getToday(),
+    establishmentDecisionStatus: 'DRAFT',
+    establishmentSignatoryName: '',
+    establishmentSignatoryRole: 'Giám đốc Bệnh viện',
     meetingDate: getToday(),
     meetingTime: '08:30',
     meetingFormat: 'OFFLINE',
-    location: '',
+    location: 'Phòng họp Hội đồng Khoa học',
     onlineMeetingUrl: '',
     sendInvitationNotification: true,
     chairId: '',
@@ -111,8 +140,9 @@ function createEmptyForm(councilCount: number): CouncilForm {
 }
 
 function CouncilsContent() {
+  const router = useRouter();
   const { currentUser } = useAuth();
-  const { success, warning, error } = useToast();
+  const { success, warning, error, confirm } = useToast();
   const searchParams = useSearchParams();
 
   const queryType = searchParams.get('type');
@@ -123,11 +153,12 @@ function CouncilsContent() {
 
   const [councils, setCouncils] = useState<Council[]>(repo.getCouncils());
   const [filterType, setFilterType] = useState<CouncilFilter>(initialFilter);
+  const [filterStatus, setFilterStatus] = useState<CouncilStatusFilter>('ALL');
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
+  // Trạng thái modal tạo/chỉnh sửa Hội đồng.
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [modalStep, setModalStep] = useState<ModalStep>(1);
   const [editingCouncilId, setEditingCouncilId] = useState<string | null>(null);
@@ -135,8 +166,9 @@ function CouncilsContent() {
     createEmptyForm(councils.length)
   );
 
-  const canManageCouncil = currentUser.role === 'RESEARCH_OFFICE';
-  const canIssueEstablishmentDecision = currentUser.role === 'DIRECTOR';
+  // Phòng Quản lý NCKH chịu trách nhiệm chuẩn bị và quản lý hồ sơ Hội đồng.
+  // Quyết định thành lập được nhập theo văn bản đã ban hành; Giám đốc không thao tác nghiệp vụ trực tiếp tại màn này.
+  const canPrepareCouncil = ['RESEARCH_OFFICE', 'ADMIN'].includes(currentUser.role);
 
   const candidateUsers = useMemo(
     () =>
@@ -162,21 +194,20 @@ function CouncilsContent() {
     return projects.filter((project) => {
       if (alreadyAssignedToOtherCouncil.has(project.id)) return false;
 
+      // Xét duyệt đề cương chỉ nhận hồ sơ đã nộp đề cương và sẵn sàng đưa ra Hội đồng.
       if (formData.type === 'PROPOSAL_REVIEW') {
-        return (
-          project.status === 'SUBMITTED' &&
-          (project.proposalStatus === 'OUTLINE_SUBMITTED' ||
-            project.proposalStatus === 'UNDER_PROPOSAL_REVIEW')
-        );
+        return project.proposalStatus === 'OUTLINE_SUBMITTED' ||
+          (Boolean(editingCouncilId) && formData.selectedProjectIds.includes(project.id));
       }
 
+      // Nghiệm thu chỉ nhận đề tài đã được Phòng NCKH xác nhận đủ điều kiện nghiệm thu.
       return (
         project.status === 'WAITING_ACCEPTANCE' &&
         (project.acceptanceDossier?.status === 'ELIGIBLE_FOR_ACCEPTANCE' ||
-          project.acceptanceDossier?.status === 'FORWARDED_TO_COUNCIL')
+          (Boolean(editingCouncilId) && formData.selectedProjectIds.includes(project.id)))
       );
     });
-  }, [councils, editingCouncilId, formData.type, projects]);
+  }, [councils, editingCouncilId, formData.type, formData.selectedProjectIds, projects]);
 
   const selectedProjects = useMemo(
     () =>
@@ -186,35 +217,22 @@ function CouncilsContent() {
     [formData.selectedProjectIds]
   );
 
-  const councilRules = useMemo(() => {
-    const policies = selectedProjects
-      .map((project) => repo.getPolicyById(project.workflowPolicyId))
-      .filter(Boolean);
 
-    const minMembers = Math.max(
-      3,
-      ...policies.map((policy) => policy?.councilPolicy?.minMembers ?? 3)
-    );
-
-    const maxMembersCandidates = policies
-      .map((policy) => policy?.councilPolicy?.maxMembers)
-      .filter((value): value is number => typeof value === 'number');
-
-    const maxMembers =
-      maxMembersCandidates.length > 0 ? Math.min(...maxMembersCandidates) : undefined;
-
-    const requiredReviewerCount = Math.max(
-      1,
-      ...policies.map((policy) => policy?.councilPolicy?.requiredReviewerCount ?? 1)
-    );
-
-    const minPassRatio = Math.max(
-      0.5,
-      ...policies.map((policy) => policy?.councilPolicy?.minPassRatio ?? 0.5)
-    );
-
-    return { minMembers, maxMembers, requiredReviewerCount, minPassRatio };
+  const conflictedUserIds = useMemo(() => {
+    const ids = new Set<string>();
+    selectedProjects.forEach((project) => {
+      if (project.principalInvestigatorId) ids.add(project.principalInvestigatorId);
+      project.members?.forEach((member) => {
+        if (member.userId) ids.add(member.userId);
+      });
+    });
+    return ids;
   }, [selectedProjects]);
+
+  const eligibleCandidateUsers = useMemo(
+    () => candidateUsers.filter((user) => !conflictedUserIds.has(user.id)),
+    [candidateUsers, conflictedUserIds]
+  );
 
   const selectedCouncilUserIds = [
     formData.chairId,
@@ -225,11 +243,23 @@ function CouncilsContent() {
   const totalMembersCount = new Set(selectedCouncilUserIds).size;
   const hasDuplicateCouncilMember = selectedCouncilUserIds.length !== totalMembersCount;
 
+  // Thống kê Metrics cho Header Dashboard
+  const metrics = useMemo(() => {
+    return {
+      total: councils.length,
+      draft: councils.filter((c) => c.status === 'DRAFT').length,
+      active: councils.filter((c) => c.status === 'ESTABLISHED' || c.status === 'EVALUATING').length,
+      minutes: councils.filter((c) => c.status === 'MINUTES_DRAFTED').length,
+      concluded: councils.filter((c) => c.status === 'CONCLUDED').length,
+    };
+  }, [councils]);
+
   const filteredCouncils = useMemo(() => {
     const q = search.trim().toLowerCase();
 
     return councils.filter((council) => {
       if (filterType !== 'ALL' && council.type !== filterType) return false;
+      if (filterStatus !== 'ALL' && council.status !== filterStatus) return false;
       if (!q) return true;
 
       return [
@@ -243,7 +273,7 @@ function CouncilsContent() {
         .toLowerCase()
         .includes(q);
     });
-  }, [councils, filterType, search]);
+  }, [councils, filterStatus, filterType, search]);
 
   const pagedCouncils = filteredCouncils.slice(
     (currentPage - 1) * pageSize,
@@ -252,485 +282,381 @@ function CouncilsContent() {
 
   const getUser = (id: string) => candidateUsers.find((user) => user.id === id);
 
-  const getReviewerCountForProject = (project: ResearchProject) => {
-    const policy = repo.getPolicyById(project.workflowPolicyId);
-    return policy?.councilPolicy?.requiredReviewerCount ?? councilRules.requiredReviewerCount;
-  };
+  const getDepartmentName = (userId: string) =>
+    repo.getDepartmentNameByUserId(userId) || 'Chưa xác định';
 
-  const makeReviewerDraft = (
-    project: ResearchProject,
-    order: number,
-    excludedIds: string[] = []
-  ): ReviewerAssignmentDraft => {
-    const candidate = candidateUsers.find(
-      (user) =>
-        !excludedIds.includes(user.id) &&
-        !hasConflictOfInterest(project, user.id)
-    );
-
-    return {
-      reviewerId: candidate?.id ?? '',
-      reviewerName: candidate?.fullName ?? '',
-      reviewerOrder: order,
-    };
-  };
-
-  const resetModal = () => {
-    setShowCreateModal(false);
-    setEditingCouncilId(null);
-    setModalStep(1);
-    setFormData(createEmptyForm(councils.length));
-  };
-
-  const openCreateModal = () => {
-    if (!canManageCouncil) return;
-    setEditingCouncilId(null);
-    setModalStep(1);
-    setFormData(createEmptyForm(councils.length));
-    setShowCreateModal(true);
-  };
-
-  const openEditCouncil = (council: Council) => {
-    if (!canManageCouncil && !canIssueEstablishmentDecision) return;
-
+  const handleEditCouncil = (council: Council) => {
     const chair = council.members.find((member) => member.roleInCouncil === 'CHỦ_TỊCH');
     const secretary = council.members.find((member) => member.roleInCouncil === 'THƯ_KÝ');
     const otherMembers = council.members.filter(
       (member) => member.roleInCouncil !== 'CHỦ_TỊCH' && member.roleInCouncil !== 'THƯ_KÝ'
     );
 
-    const assignments = Object.fromEntries(
-      (council.projectAssignments ?? []).map((assignment) => [
-        assignment.projectId,
-        {
-          reviewerAssignments: [...(assignment.reviewerAssignments ?? [])].sort(
-            (a, b) => a.reviewerOrder - b.reviewerOrder
-          ),
-          notes: assignment.notes ?? '',
-        },
-      ])
-    ) as Record<string, ProjectAssignmentDraft>;
+    const projectAssignments = (council.projectAssignments || []).reduce<Record<string, ProjectAssignmentDraft>>(
+      (acc, assignment) => {
+        acc[assignment.projectId] = {
+          reviewerAssignments: assignment.reviewerAssignments || [],
+          notes: assignment.notes || '',
+        };
+        return acc;
+      },
+      {}
+    );
 
     setEditingCouncilId(council.id);
     setFormData({
       code: council.code,
       name: council.name,
       type: council.type,
-      specialtyCluster: council.specialtyCluster ?? SPECIALTY_CLUSTERS[0],
-      establishmentDecisionNumber: council.establishmentDecisionNumber ?? '',
-      decisionDate: council.decisionDate ?? getToday(),
-      decisionStatus: council.decisionStatus ?? 'DRAFT',
-      signatoryName: council.signatoryName ?? '',
-      signatoryRole: council.signatoryRole ?? 'Giám đốc Bệnh viện',
-      meetingDate: council.meetingDate,
-      meetingTime: council.meetingTime ?? '08:30',
-      meetingFormat: council.meetingFormat ?? 'OFFLINE',
-      location: council.location,
-      onlineMeetingUrl: council.onlineMeetingUrl ?? '',
+      specialtyCluster: council.specialtyCluster || SPECIALTY_CLUSTERS[0],
+      establishmentDecisionNumber: council.establishmentDecisionNumber || '',
+      establishmentDecisionDate: council.establishmentDecisionDate || getToday(),
+      establishmentDecisionStatus: council.establishmentDecisionStatus || 'DRAFT',
+      establishmentSignatoryName: council.establishmentSignatoryName || '',
+      establishmentSignatoryRole: council.establishmentSignatoryRole || 'Giám đốc Bệnh viện',
+      meetingDate: council.meetingDate || getToday(),
+      meetingTime: council.meetingTime || '',
+      meetingFormat: council.meetingFormat || 'OFFLINE',
+      location: council.location || '',
+      onlineMeetingUrl: council.onlineMeetingUrl || '',
       sendInvitationNotification: council.sendInvitationNotification ?? true,
-      chairId: chair?.userId ?? '',
-      secretaryId: secretary?.userId ?? '',
+      chairId: chair?.userId || '',
+      secretaryId: secretary?.userId || '',
       memberIds: otherMembers.map((member) => member.userId),
       selectedProjectIds: [...council.projectIds],
-      projectAssignments: assignments,
+      projectAssignments,
     });
     setModalStep(1);
     setShowCreateModal(true);
   };
 
-  const handleCouncilTypeChange = (type: CouncilType) => {
-    setFormData((current) => ({
-      ...current,
-      type,
-      selectedProjectIds: [],
-      projectAssignments: {},
-      name:
-        type === 'PROPOSAL_REVIEW'
-          ? 'Hội đồng xét duyệt đề cương NCKH'
-          : 'Hội đồng nghiệm thu đề tài NCKH',
-    }));
+  const handleDeleteCouncil = (id: string, name: string) => {
+    confirm({
+      title: 'Xóa dự thảo Hội đồng',
+      message: `Bạn có chắc chắn muốn xóa Hội đồng "${name}"? Chỉ dự thảo chưa ban hành quyết định mới được xóa.`,
+      confirmLabel: 'Xóa dự thảo',
+      type: 'danger',
+      onConfirm: () => {
+        const deleted = repo.deleteCouncil(id);
+        if (!deleted) {
+          error('Không thể xóa dự thảo Hội đồng.');
+          return;
+        }
+        setCouncils(repo.getCouncils());
+        success(`Đã xóa dự thảo Hội đồng "${name}".`);
+      },
+    });
   };
 
-  const toggleProject = (project: ResearchProject) => {
-    const selected = formData.selectedProjectIds.includes(project.id);
-
-    if (selected) {
-      const nextAssignments = { ...formData.projectAssignments };
-      delete nextAssignments[project.id];
-
-      setFormData((current) => ({
-        ...current,
-        selectedProjectIds: current.selectedProjectIds.filter((id) => id !== project.id),
-        projectAssignments: nextAssignments,
-      }));
+  const handleSaveCouncil = (targetStatus: 'DRAFT' | 'ESTABLISHED') => {
+    if (!canPrepareCouncil) {
+      warning('Bạn không có quyền tạo hoặc cập nhật Hội đồng.');
       return;
     }
-
-    const reviewerCount = getReviewerCountForProject(project);
-    const reviewerAssignments: ReviewerAssignmentDraft[] = [];
-
-    for (let index = 0; index < reviewerCount; index += 1) {
-      reviewerAssignments.push(
-        makeReviewerDraft(
-          project,
-          index + 1,
-          reviewerAssignments.map((item) => item.reviewerId).filter(Boolean)
-        )
-      );
+    if (!formData.name.trim()) {
+      warning('Vui lòng nhập Tên Hội đồng.');
+      setModalStep(1);
+      return;
     }
-
-    setFormData((current) => ({
-      ...current,
-      selectedProjectIds: [...current.selectedProjectIds, project.id],
-      projectAssignments: {
-        ...current.projectAssignments,
-        [project.id]: {
-          reviewerAssignments,
-          notes: '',
-        },
-      },
-    }));
-  };
-
-  const updateReviewer = (projectId: string, reviewerOrder: number, reviewerId: string) => {
-    const user = getUser(reviewerId);
-
-    setFormData((current) => {
-      const assignment = current.projectAssignments[projectId];
-      if (!assignment) return current;
-
-      return {
-        ...current,
-        projectAssignments: {
-          ...current.projectAssignments,
-          [projectId]: {
-            ...assignment,
-            reviewerAssignments: assignment.reviewerAssignments.map((reviewer) =>
-              reviewer.reviewerOrder === reviewerOrder
-                ? {
-                    ...reviewer,
-                    reviewerId,
-                    reviewerName: user?.fullName ?? '',
-                  }
-                : reviewer
-            ),
-          },
-        },
-      };
-    });
-  };
-
-  const updateAssignmentNotes = (projectId: string, notes: string) => {
-    setFormData((current) => {
-      const assignment = current.projectAssignments[projectId];
-      if (!assignment) return current;
-
-      return {
-        ...current,
-        projectAssignments: {
-          ...current.projectAssignments,
-          [projectId]: { ...assignment, notes },
-        },
-      };
-    });
-  };
-
-  const hasAnyConflict = formData.selectedProjectIds.some((projectId) => {
-    const project = repo.getProjectById(projectId);
-    const assignment = formData.projectAssignments[projectId];
-
-    if (!project || !assignment) return false;
-
-    return assignment.reviewerAssignments.some((reviewer) =>
-      hasConflictOfInterest(project, reviewer.reviewerId)
-    );
-  });
-
-  const validateCouncil = () => {
-    if (!formData.code.trim() || !formData.name.trim()) {
-      warning('Vui lòng nhập mã và tên Hội đồng.');
-      return false;
+    if (formData.selectedProjectIds.length === 0) {
+      warning('Vui lòng chọn ít nhất 1 đề tài cần thẩm định.');
+      setModalStep(2);
+      return;
     }
-
     if (!formData.chairId || !formData.secretaryId) {
       warning('Vui lòng chọn Chủ tịch và Thư ký Hội đồng.');
-      return false;
+      setModalStep(3);
+      return;
     }
-
     if (hasDuplicateCouncilMember) {
-      warning('Một người không thể giữ nhiều vị trí thành viên trong cùng Hội đồng.');
-      return false;
+      warning('Một thành viên không được đảm nhận trùng nhiều vai trò trong cùng 1 Hội đồng.');
+      setModalStep(3);
+      return;
     }
 
-    if (totalMembersCount < councilRules.minMembers) {
-      warning(`Hội đồng cần tối thiểu ${councilRules.minMembers} thành viên theo cấu hình áp dụng.`);
-      return false;
+    if (targetStatus === 'ESTABLISHED' && !formData.establishmentDecisionNumber.trim()) {
+      warning('Cần nhập số Quyết định thành lập trước khi xác nhận Hội đồng đã được thành lập.');
+      setModalStep(1);
+      return;
     }
 
-    if (councilRules.maxMembers && totalMembersCount > councilRules.maxMembers) {
-      warning(`Hội đồng không được vượt quá ${councilRules.maxMembers} thành viên theo cấu hình áp dụng.`);
-      return false;
+    const selectedPeople = [formData.chairId, formData.secretaryId, ...formData.memberIds];
+    if (selectedPeople.some((id) => conflictedUserIds.has(id))) {
+      warning('Chủ nhiệm hoặc thành viên nhóm nghiên cứu của đề tài không được phân công vào Hội đồng đánh giá chính đề tài đó.');
+      setModalStep(3);
+      return;
     }
 
-    if (formData.selectedProjectIds.length === 0) {
-      warning('Vui lòng chọn ít nhất một đề tài.');
-      return false;
-    }
+    const councilId = editingCouncilId || `council-${Date.now()}`;
+    const councilPolicy = repo.getCommonCouncilPolicy(formData.selectedProjectIds);
+    const secretaryCanEvaluate = councilPolicy?.secretaryCanEvaluate ?? false;
+    const secretaryCanVote = councilPolicy?.secretaryCanVote ?? false;
 
-    for (const projectId of formData.selectedProjectIds) {
-      const project = repo.getProjectById(projectId);
-      const assignment = formData.projectAssignments[projectId];
-
-      if (!project || !assignment) {
-        warning('Thiếu thông tin phân công phản biện cho một đề tài.');
-        return false;
-      }
-
-      const requiredCount = getReviewerCountForProject(project);
-      const reviewers = assignment.reviewerAssignments.filter((reviewer) => reviewer.reviewerId);
-
-      if (reviewers.length < requiredCount) {
-        warning(`Đề tài ${project.projectCode || project.proposalCode} chưa đủ ${requiredCount} phản biện.`);
-        return false;
-      }
-
-      if (new Set(reviewers.map((reviewer) => reviewer.reviewerId)).size !== reviewers.length) {
-        warning(`Đề tài ${project.projectCode || project.proposalCode} đang phân công trùng phản biện.`);
-        return false;
-      }
-
-      if (reviewers.some((reviewer) => hasConflictOfInterest(project, reviewer.reviewerId))) {
-        warning(`Đề tài ${project.projectCode || project.proposalCode} có phản biện xung đột lợi ích.`);
-        return false;
-      }
-    }
-
-    return true;
-  };
-
-  const buildMembers = (councilId: string): CouncilMember[] => {
-    const members: Array<{ userId: string; role: CouncilRole }> = [
-      { userId: formData.chairId, role: 'CHỦ_TỊCH' },
-      { userId: formData.secretaryId, role: 'THƯ_KÝ' },
-      ...formData.memberIds.filter(Boolean).map((userId) => ({ userId, role: 'ỦY_VIÊN' as CouncilRole })),
+    const members: CouncilMember[] = [
+      {
+        id: `cm-${Date.now()}-1`,
+        councilId,
+        userId: formData.chairId,
+        userFullName: getUser(formData.chairId)?.fullName || '',
+        academicTitle: getUser(formData.chairId)?.academicTitle || '',
+        departmentName: getDepartmentName(formData.chairId),
+        roleInCouncil: 'CHỦ_TỊCH',
+        hasConflictOfInterest: false,
+        canEvaluate: true,
+        canVote: true,
+      },
+      {
+        id: `cm-${Date.now()}-2`,
+        councilId,
+        userId: formData.secretaryId,
+        userFullName: getUser(formData.secretaryId)?.fullName || '',
+        academicTitle: getUser(formData.secretaryId)?.academicTitle || '',
+        departmentName: getDepartmentName(formData.secretaryId),
+        roleInCouncil: 'THƯ_KÝ',
+        hasConflictOfInterest: false,
+        canEvaluate: secretaryCanEvaluate,
+        canVote: secretaryCanVote,
+      },
+      ...formData.memberIds.map((mId, index) => ({
+        id: `cm-${Date.now()}-${index + 3}`,
+        councilId,
+        userId: mId,
+        userFullName: getUser(mId)?.fullName || '',
+        academicTitle: getUser(mId)?.academicTitle || '',
+        departmentName: getDepartmentName(mId),
+        roleInCouncil: (Object.values(formData.projectAssignments).some((assignment) =>
+          assignment.reviewerAssignments.some((reviewer) => reviewer.reviewerId === mId)
+        ) ? 'PHẢN_BIỆN' : 'ỦY_VIÊN') as CouncilRole,
+        hasConflictOfInterest: false,
+        canEvaluate: true,
+        canVote: true,
+      })),
     ];
 
-    return members.map(({ userId, role }, index) => {
-      const user = getUser(userId);
-      const department = user ? repo.getDepartmentById(user.departmentId) : undefined;
+    const projectAssignments: CouncilProjectAssignment[] = formData.selectedProjectIds.map((pId) => ({
+      projectId: pId,
+      reviewerAssignments: formData.projectAssignments[pId]?.reviewerAssignments || [],
+      notes: formData.projectAssignments[pId]?.notes || '',
+    }));
 
-      return {
-        id: `${councilId}-member-${index + 1}`,
-        councilId,
-        userId,
-        userFullName: user?.fullName ?? '',
-        academicTitle: user?.academicTitle ?? '',
-        departmentName: department?.name ?? '',
-        roleInCouncil: role,
-        hasConflictOfInterest: false,
-      };
-    });
-  };
+    const newCouncil: Council = {
+      id: councilId,
+      code: formData.code,
+      name: formData.name,
+      type: formData.type,
+      specialtyCluster: formData.specialtyCluster,
+      projectIds: formData.selectedProjectIds,
+      projectAssignments,
+      establishmentDecisionNumber: formData.establishmentDecisionNumber,
+      establishmentDecisionDate: formData.establishmentDecisionDate,
+      establishmentDecisionStatus: targetStatus === 'ESTABLISHED' ? 'ISSUED' : formData.establishmentDecisionStatus,
+      establishmentSignatoryName: formData.establishmentSignatoryName || undefined,
+      establishmentSignatoryRole: formData.establishmentSignatoryRole || undefined,
+      meetingDate: formData.meetingDate,
+      meetingTime: formData.meetingTime,
+      meetingFormat: formData.meetingFormat,
+      location: formData.location,
+      onlineMeetingUrl: formData.onlineMeetingUrl,
+      minMembers: councilPolicy?.minMembers,
+      maxMembers: councilPolicy?.maxMembers,
+      requiredReviewerCount: councilPolicy?.requiredReviewerCount,
+      minPassRatio: councilPolicy?.minPassRatio ?? 0,
+      status: targetStatus,
+      members,
+      evaluationResults: editingCouncilId ? repo.getCouncilById(editingCouncilId)?.evaluationResults || [] : [],
+      minutes: editingCouncilId ? repo.getCouncilById(editingCouncilId)?.minutes || [] : [],
+    };
 
-  const buildAssignments = (): CouncilProjectAssignment[] =>
-    formData.selectedProjectIds.map((projectId) => {
-      const draft = formData.projectAssignments[projectId];
+    const persisted = editingCouncilId
+      ? Boolean(repo.updateCouncil(editingCouncilId, newCouncil))
+      : Boolean(repo.createCouncil(newCouncil));
 
-      return {
-        projectId,
-        reviewerAssignments: draft.reviewerAssignments.map((reviewer) => ({
-          reviewerId: reviewer.reviewerId,
-          reviewerName: reviewer.reviewerName,
-          reviewerOrder: reviewer.reviewerOrder,
-        })),
-        notes: draft.notes || undefined,
-      };
-    });
-
-  const saveCouncil = (issueEstablishmentDecision: boolean) => {
-    if (!validateCouncil()) return;
-
-    if (issueEstablishmentDecision && !canIssueEstablishmentDecision) {
-      warning('Chỉ người có thẩm quyền mới được xác nhận ban hành quyết định thành lập Hội đồng.');
+    if (!persisted) {
+      warning('Repository chưa có hàm createCouncil/updateCouncil phù hợp; không ghi dữ liệu giả chỉ ở state giao diện.');
       return;
     }
 
-    if (!issueEstablishmentDecision && !canManageCouncil) {
-      warning('Bạn không có quyền tạo hoặc cập nhật dự thảo Hội đồng.');
-      return;
-    }
-
-    if (issueEstablishmentDecision && !formData.establishmentDecisionNumber.trim()) {
-      warning('Vui lòng nhập số Quyết định thành lập trước khi ban hành.');
-      return;
-    }
-
-    try {
-      const councilId = editingCouncilId ?? `council-${Date.now()}`;
-      const signatory = issueEstablishmentDecision ? currentUser : undefined;
-
-      const council: Council = {
-        id: councilId,
-        code: formData.code.trim(),
-        name: formData.name.trim(),
-        type: formData.type,
-        specialtyCluster: formData.specialtyCluster || undefined,
-        projectIds: [...formData.selectedProjectIds],
-        projectAssignments: buildAssignments(),
-        minMembers: councilRules.minMembers,
-        maxMembers: councilRules.maxMembers,
-        requiredReviewerCount: councilRules.requiredReviewerCount,
-        establishmentDecisionNumber: issueEstablishmentDecision
-          ? formData.establishmentDecisionNumber.trim()
-          : undefined,
-        decisionDate: issueEstablishmentDecision ? formData.decisionDate : undefined,
-        decisionStatus: issueEstablishmentDecision ? 'ISSUED' : 'DRAFT',
-        signatoryName: issueEstablishmentDecision ? signatory?.fullName : undefined,
-        signatoryRole: issueEstablishmentDecision ? 'Giám đốc Bệnh viện' : undefined,
-        meetingDate: formData.meetingDate,
-        meetingTime: formData.meetingTime || undefined,
-        meetingFormat: formData.meetingFormat,
-        location: formData.location,
-        onlineMeetingUrl:
-          formData.meetingFormat === 'OFFLINE' ? undefined : formData.onlineMeetingUrl || undefined,
-        sendInvitationNotification:
-          issueEstablishmentDecision && formData.sendInvitationNotification,
-        minPassRatio: councilRules.minPassRatio,
-        status: issueEstablishmentDecision ? 'ESTABLISHED' : 'DRAFT',
-        members: buildMembers(councilId),
-        evaluationResults: editingCouncilId
-          ? repo.getCouncilById(editingCouncilId)?.evaluationResults ?? []
-          : [],
-        minutes: editingCouncilId ? repo.getCouncilById(editingCouncilId)?.minutes ?? [] : [],
-      };
-
-      const saved = editingCouncilId
-        ? repo.updateCouncil(editingCouncilId, council)
-        : repo.createCouncil(council);
-
-      if (!saved) {
-        error('Không thể lưu Hội đồng.');
-        return;
-      }
-
-      // Khi một Hội đồng được ban hành, cập nhật flow con của đề tài.
-      if (issueEstablishmentDecision) {
-        for (const projectId of formData.selectedProjectIds) {
-          const project = repo.getProjectById(projectId);
-          if (!project) continue;
-
-          if (formData.type === 'PROPOSAL_REVIEW') {
-            repo.updateProject(projectId, { proposalStatus: 'UNDER_PROPOSAL_REVIEW' });
-          } else if (project.acceptanceDossier) {
-            repo.updateProject(projectId, {
-              acceptanceDossier: {
-                ...project.acceptanceDossier,
-                status: 'FORWARDED_TO_COUNCIL',
-              },
-            });
-          }
+    if (targetStatus === 'ESTABLISHED') {
+      formData.selectedProjectIds.forEach((projectId) => {
+        const selectedProject = repo.getProjectById(projectId);
+        if (!selectedProject) return;
+        if (formData.type === 'PROPOSAL_REVIEW') {
+          repo.updateProject(projectId, { proposalStatus: 'UNDER_PROPOSAL_REVIEW' });
+        } else if (selectedProject.acceptanceDossier) {
+          repo.updateProject(projectId, {
+            acceptanceDossier: {
+              ...selectedProject.acceptanceDossier,
+              status: 'FORWARDED_TO_COUNCIL',
+            },
+          });
         }
-      }
-
-      setCouncils(repo.getCouncils());
-      success(
-        issueEstablishmentDecision
-          ? 'Đã ban hành quyết định thành lập Hội đồng.'
-          : editingCouncilId
-            ? 'Đã cập nhật dự thảo Hội đồng.'
-            : 'Đã lưu dự thảo Hội đồng.'
-      );
-      resetModal();
-    } catch {
-      error('Không thể lưu Hội đồng. Vui lòng kiểm tra lại dữ liệu.');
+      });
     }
-  };
 
-  const isEditingDraft = editingCouncilId
-    ? repo.getCouncilById(editingCouncilId)?.status === 'DRAFT'
-    : false;
+    repo.addAuditLog({
+      userId: currentUser.id,
+      userFullName: currentUser.fullName,
+      userRole: currentUser.role,
+      actionCode: editingCouncilId ? 'UPDATE_COUNCIL' : targetStatus === 'DRAFT' ? 'SAVE_COUNCIL_DRAFT' : 'CREATE_COUNCIL',
+      entityType: 'COUNCIL',
+      entityId: newCouncil.id,
+      notes: `${targetStatus === 'DRAFT' ? 'Lưu dự thảo' : 'Thành lập'} Hội đồng ${newCouncil.code}: ${newCouncil.name}`,
+    });
+
+    setCouncils(repo.getCouncils());
+    success(targetStatus === 'DRAFT' ? 'Đã lưu dự thảo Hội đồng.' : `Đã thành lập Hội đồng "${newCouncil.name}".`);
+    setShowCreateModal(false);
+  };
 
   return (
-    <div className="space-y-4 text-slate-800">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="space-y-4 text-slate-800 text-xs">
+      {/* ── HEADER & THAO TÁC RỘNG ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Quản lý Hội đồng KH&CN</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Thành lập, phân công phản biện và theo dõi Hội đồng xét duyệt đề cương hoặc nghiệm thu.
+          <h1 className="text-base font-bold text-slate-900">Hội đồng khoa học & công nghệ</h1>
+          <p className="text-xs text-slate-500 mt-0.5 font-medium">
+            Tạo Hội đồng, tổ chức đánh giá, hoàn thiện biên bản và theo dõi kết luận
           </p>
         </div>
 
-        {canManageCouncil && (
+        <div className="flex items-center gap-2">
           <button
-            type="button"
-            onClick={openCreateModal}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#0A6EBD] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#085896]"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold shadow-2xs transition cursor-pointer"
           >
-            <Plus className="h-4 w-4" />
-            Thành lập Hội đồng
+            <Printer className="w-3.5 h-3.5 text-slate-500" /> In danh mục
           </button>
-        )}
+          <button
+            onClick={() => success('Đã xuất danh sách Hội đồng thành file Excel (.xlsx) thành công!')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold shadow-2xs transition cursor-pointer"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Xuất Excel
+          </button>
+          {canPrepareCouncil && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingCouncilId(null);
+                setModalStep(1);
+                setFormData(createEmptyForm(councils.length));
+                setShowCreateModal(true);
+              }}
+              className="inline-flex items-center gap-1.5 bg-[#0A6EBD] hover:bg-[#085896] text-white font-bold px-3.5 py-1.5 rounded-lg shadow-2xs transition cursor-pointer"
+            >
+              <Plus className="w-4 h-4" /> Tạo Hội đồng
+            </button>
+          )}
+        </div>
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white">
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-4">
-          <div className="relative min-w-[260px] flex-1 max-w-xl">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setCurrentPage(1);
-              }}
-              placeholder="Tìm mã, tên Hội đồng, số quyết định..."
-              className="w-full rounded-lg border border-slate-300 py-2.5 pl-9 pr-9 text-sm outline-none focus:border-[#0A6EBD]"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
-                aria-label="Xóa tìm kiếm"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
+      {/* ── BẢNG METRIC STATS CARDS ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs flex items-center gap-3">
+          <div className="p-2.5 bg-slate-100 text-slate-600 rounded-lg shrink-0">
+            <Users className="w-5 h-5" />
           </div>
-
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-slate-400" />
-            <select
-              value={filterType}
-              onChange={(event) => {
-                setFilterType(event.target.value as CouncilFilter);
-                setCurrentPage(1);
-              }}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none"
-            >
-              <option value="ALL">Tất cả loại Hội đồng</option>
-              <option value="PROPOSAL_REVIEW">Xét duyệt đề cương</option>
-              <option value="ACCEPTANCE">Nghiệm thu</option>
-            </select>
+          <div>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Tổng Hội đồng</span>
+            <strong className="text-lg font-mono font-bold text-slate-900">{metrics.total}</strong>
+            <span className="block text-[10px] text-emerald-600 font-semibold">{metrics.concluded} hoàn tất</span>
           </div>
         </div>
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs flex items-center gap-3">
+          <div className="p-2.5 bg-amber-50 text-amber-700 rounded-lg shrink-0">
+            <Clock className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Dự thảo</span>
+            <strong className="text-lg font-mono font-bold text-amber-700">{metrics.draft}</strong>
+          </div>
+        </div>
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs flex items-center gap-3">
+          <div className="p-2.5 bg-sky-50 text-[#0A6EBD] rounded-lg shrink-0">
+            <PenTool className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Đang đánh giá</span>
+            <strong className="text-lg font-mono font-bold text-[#0A6EBD]">{metrics.active}</strong>
+          </div>
+        </div>
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs flex items-center gap-3">
+          <div className="p-2.5 bg-emerald-50 text-emerald-700 rounded-lg shrink-0">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Hoàn thiện biên bản</span>
+            <strong className="text-lg font-mono font-bold text-emerald-700">{metrics.minutes}</strong>
+          </div>
+        </div>
+      </div>
 
+      {/* ── TOOLBAR BỘ LỌC ── */}
+      <section className="rounded-xl border border-slate-200/80 bg-white shadow-2xs p-3 flex flex-wrap items-center gap-2.5">
+        <div className="relative flex-1 min-w-[260px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setCurrentPage(1);
+            }}
+            placeholder="Tìm theo mã, tên Hội đồng, số quyết định..."
+            className="w-full pl-9 pr-8 py-1.5 rounded-lg border border-slate-300 focus:border-[#0A6EBD] text-xs outline-none bg-white font-medium"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+
+        <select
+          value={filterType}
+          onChange={(e) => setFilterType(e.target.value as CouncilFilter)}
+          className="py-1.5 px-3 rounded-lg border border-slate-300 text-xs font-semibold outline-none bg-white cursor-pointer"
+        >
+          <option value="ALL">Tất cả loại Hội đồng</option>
+          <option value="PROPOSAL_REVIEW">Xét duyệt đề cương</option>
+          <option value="ACCEPTANCE">Nghiệm thu kết quả</option>
+        </select>
+
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value as CouncilStatusFilter)}
+          className="py-1.5 px-3 rounded-lg border border-slate-300 text-xs font-semibold outline-none bg-white cursor-pointer"
+        >
+          <option value="ALL">Tất cả trạng thái</option>
+          <option value="DRAFT">Dự thảo</option>
+          <option value="ESTABLISHED">Đã thành lập / Chờ đánh giá</option>
+          <option value="EVALUATING">Đang đánh giá</option>
+          <option value="MINUTES_DRAFTED">Đang hoàn thiện biên bản</option>
+          <option value="CONCLUDED">Hoàn tất</option>
+        </select>
+      </section>
+
+      {/* ── BẢNG DANH SÁCH HỘI ĐỒNG ENTERPRISE ── */}
+      <section className="rounded-xl border border-slate-200/80 bg-white shadow-2xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left text-sm">
-            <thead className="bg-slate-50 text-xs font-semibold text-slate-600">
+          <table className="w-full border-collapse text-left text-xs">
+            <thead className="bg-[#0B2A63] text-white font-bold uppercase tracking-wider text-[11px] select-none">
               <tr>
-                <th className="w-36 px-5 py-3">Mã Hội đồng</th>
-                <th className="min-w-[300px] px-5 py-3">Hội đồng</th>
-                <th className="w-52 px-5 py-3">Lịch họp</th>
-                <th className="w-56 px-5 py-3">Chủ tịch / Thư ký</th>
-                <th className="w-44 px-5 py-3">Trạng thái</th>
-                <th className="w-20 px-5 py-3 text-center">Thao tác</th>
+                <th className="px-4 py-3.5 w-32 whitespace-nowrap">MÃ HỘI ĐỒNG</th>
+                <th className="px-4 py-3.5 min-w-[280px]">TÊN HỘI ĐỒNG & KHỐI CHUYÊN MÔN</th>
+                <th className="px-4 py-3.5 w-44 whitespace-nowrap">HÌNH THỨC & LỊCH HỌP</th>
+                <th className="px-4 py-3.5 w-44 whitespace-nowrap">CHỦ TỊCH / THƯ KÝ</th>
+                <th className="px-4 py-3.5 w-32 text-center whitespace-nowrap">TIẾN ĐỘ CHẤM</th>
+                <th className="px-4 py-3.5 w-32 text-center whitespace-nowrap">TRẠNG THÁI</th>
+                <th className="px-4 py-3.5 w-36 text-center whitespace-nowrap">THAO TÁC</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
               {pagedCouncils.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center text-slate-400">
-                    Không có Hội đồng phù hợp.
+                  <td colSpan={7} className="px-5 py-12 text-center text-slate-400">
+                    Không tìm thấy hội đồng nào phù hợp với bộ lọc.
                   </td>
                 </tr>
               ) : (
@@ -738,102 +664,142 @@ function CouncilsContent() {
                   const chair = council.members.find((m) => m.roleInCouncil === 'CHỦ_TỊCH');
                   const secretary = council.members.find((m) => m.roleInCouncil === 'THƯ_KÝ');
 
+                  // Thống kê tiến độ nộp phiếu chấm của Hội đồng
+                  const evaluatingMembers = council.members.filter((member) => member.canEvaluate !== false);
+                  const expectedVotes = evaluatingMembers.length * Math.max(council.projectIds.length, 1);
+                  const submittedCount = (council.evaluationResults || []).filter((result) =>
+                    result.status === 'SUBMITTED' || result.status === 'SIGNED'
+                  ).length;
+                  const progressRatio = expectedVotes > 0 ? Math.min(100, Math.round((submittedCount / expectedVotes) * 100)) : 0;
+
                   return (
-                    <tr key={council.id} className="hover:bg-slate-50/70">
-                      <td className="px-5 py-4 align-top">
-                        <Link
-                          href={`/councils/${council.id}`}
-                          className="font-mono text-xs font-semibold text-[#0A6EBD] hover:underline"
-                        >
+                    <tr key={council.id} className="hover:bg-slate-50 transition">
+                      {/* Mã Hội đồng */}
+                      <td className="px-4 py-3.5 font-mono font-bold text-[#0A6EBD] align-middle whitespace-nowrap">
+                        <Link href={`/councils/${council.id}`} className="hover:underline">
                           {council.code}
                         </Link>
                       </td>
-                      <td className="px-5 py-4 align-top">
+
+                      {/* Tên Hội đồng */}
+                      <td className="px-4 py-3.5 align-middle">
                         <Link
                           href={`/councils/${council.id}`}
-                          className="font-semibold text-slate-900 hover:text-[#0A6EBD]"
+                          className="font-bold text-slate-900 hover:text-[#0A6EBD] transition block leading-snug line-clamp-2"
                         >
                           {council.name}
                         </Link>
-                        <div className="mt-1 flex flex-wrap gap-1.5 text-xs text-slate-500">
-                          <span className="rounded bg-slate-100 px-2 py-0.5">
+                        <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500 font-medium">
+                          <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-semibold border border-slate-200">
                             {council.type === 'PROPOSAL_REVIEW' ? 'Xét duyệt đề cương' : 'Nghiệm thu'}
                           </span>
-                          {council.specialtyCluster && <span>{council.specialtyCluster}</span>}
+                          {council.specialtyCluster && (
+                            <span className="text-[#0A6EBD] bg-sky-50 px-1.5 py-0.5 rounded border border-sky-100 font-semibold">
+                              {council.specialtyCluster}
+                            </span>
+                          )}
                           <span>• {council.projectIds.length} đề tài</span>
                         </div>
                       </td>
-                      <td className="px-5 py-4 align-top text-xs text-slate-600">
-                        <div className="flex items-center gap-1.5 font-medium text-slate-800">
-                          <Calendar className="h-3.5 w-3.5 text-[#0A6EBD]" />
-                          {council.meetingDate}
-                          {council.meetingTime ? ` · ${council.meetingTime}` : ''}
-                        </div>
-                        <div className="mt-1 flex items-center gap-1.5">
+
+                      {/* Lịch họp */}
+                      <td className="px-4 py-3.5 align-middle whitespace-nowrap">
+                        <p className="font-bold text-slate-800 font-mono flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5 text-[#0A6EBD]" />
+                          {formatCouncilDate(council.meetingDate)}
+                        </p>
+                        <p className="text-slate-500 text-[11px] mt-0.5 flex items-center gap-1 font-medium">
                           {council.meetingFormat === 'ONLINE' ? (
-                            <Video className="h-3.5 w-3.5" />
+                            <span className="text-emerald-700 font-bold flex items-center gap-0.5">
+                              <Video className="w-3 h-3" /> Online
+                            </span>
                           ) : (
-                            <MapPin className="h-3.5 w-3.5" />
+                            <span className="text-slate-600 flex items-center gap-0.5">
+                              <MapPin className="w-3 h-3 text-slate-400" /> {council.location || 'Tại phòng họp'}
+                            </span>
                           )}
-                          <span className="line-clamp-1">{council.location || 'Chưa cập nhật'}</span>
-                        </div>
+                        </p>
                       </td>
-                      <td className="px-5 py-4 align-top text-xs">
-                        <div className="font-medium text-slate-800">
-                          {chair?.userFullName || 'Chưa chỉ định'}
-                        </div>
-                        <div className="mt-1 text-slate-500">
-                          Thư ký: {secretary?.userFullName || 'Chưa chỉ định'}
-                        </div>
+
+                      {/* Chủ tịch / Thư ký */}
+                      <td className="px-4 py-3.5 align-middle text-[11px]">
+                        <p className="font-bold text-slate-900">{chair?.userFullName || 'Chưa chọn'}</p>
+                        <p className="text-slate-500 mt-0.5 font-medium">Thư ký: {secretary?.userFullName || 'Chưa chọn'}</p>
                       </td>
-                      <td className="px-5 py-4 align-top">
-                        <StatusBadge status={council.status} />
-                        {council.establishmentDecisionNumber && (
-                          <div className="mt-1 font-mono text-[11px] text-slate-500">
-                            {council.establishmentDecisionNumber}
+
+                      {/* Tiến độ nộp phiếu chấm */}
+                      <td className="px-4 py-3.5 align-middle text-center">
+                        <div className="space-y-1">
+                          <span className="font-mono font-bold text-[11px] text-slate-700">
+                            {submittedCount}/{expectedVotes} phiếu ({progressRatio}%)
+                          </span>
+                          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden border border-slate-200/60">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${
+                                progressRatio === 100 ? 'bg-emerald-500' : 'bg-[#0A6EBD]'
+                              }`}
+                              style={{ width: `${progressRatio}%` }}
+                            />
                           </div>
-                        )}
+                        </div>
                       </td>
-                      <td className="px-5 py-4 text-center align-top">
-                        <div className="relative inline-block">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setOpenMenuId(openMenuId === council.id ? null : council.id)
+
+                      {/* Trạng thái */}
+                      <td className="px-4 py-3.5 align-middle text-center">
+                        <StatusBadge status={council.status} />
+                      </td>
+
+                      {/* Thao tác */}
+                      <td className="px-4 py-3.5 text-center align-middle whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1">
+                          <Link
+                            href={
+                              council.status === 'MINUTES_DRAFTED' || council.status === 'CONCLUDED'
+                                ? `/councils/${council.id}?tab=minutes`
+                                : `/councils/${council.id}`
                             }
-                            className="rounded-lg border border-slate-300 bg-white p-2 text-slate-500 hover:bg-slate-50"
-                            aria-label={`Thao tác với ${council.code}`}
+                            title={
+                              council.status === 'CONCLUDED'
+                                ? 'Xem kết quả'
+                                : council.status === 'DRAFT'
+                                  ? 'Xem thông tin Hội đồng'
+                                  : 'Mở Hội đồng'
+                            }
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-[#0A6EBD] transition hover:border-sky-300 hover:bg-sky-50"
                           >
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
+                            <Eye className="h-4 w-4" />
+                          </Link>
 
-                          {openMenuId === council.id && (
-                            <div className="absolute right-0 top-10 z-30 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 text-left shadow-xl">
-                              <Link
-                                href={`/councils/${council.id}`}
-                                onClick={() => setOpenMenuId(null)}
-                                className="flex items-center gap-2 px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
-                              >
-                                <Eye className="h-4 w-4" /> Xem workspace
-                              </Link>
+                          {canPrepareCouncil && council.status === 'DRAFT' && (
+                            <button
+                              type="button"
+                              title="Chỉnh sửa Hội đồng"
+                              onClick={() => handleEditCouncil(council)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700"
+                            >
+                              <PenTool className="h-4 w-4" />
+                            </button>
+                          )}
 
-                              {(canManageCouncil || canIssueEstablishmentDecision) &&
-                                (council.status === 'DRAFT' || council.decisionStatus !== 'ISSUED') && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setOpenMenuId(null);
-                                      openEditCouncil(council);
-                                    }}
-                                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
-                                  >
-                                    <PenTool className="h-4 w-4" />
-                                    {canIssueEstablishmentDecision && council.decisionStatus !== 'ISSUED'
-                                      ? 'Xem / ban hành'
-                                      : 'Chỉnh sửa dự thảo'}
-                                  </button>
-                                )}
-                            </div>
+                          {(council.status === 'MINUTES_DRAFTED' || council.status === 'CONCLUDED') && (
+                            <Link
+                              href={`/councils/${council.id}?tab=minutes`}
+                              title={council.status === 'CONCLUDED' ? 'Xem biên bản' : 'Hoàn thiện biên bản'}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
+                            >
+                              <FileText className="h-4 w-4" />
+                            </Link>
+                          )}
+
+                          {canPrepareCouncil && council.status === 'DRAFT' && (
+                            <button
+                              type="button"
+                              title="Xóa dự thảo"
+                              onClick={() => handleDeleteCouncil(council.id, council.name)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
                           )}
                         </div>
                       </td>
@@ -846,6 +812,7 @@ function CouncilsContent() {
         </div>
       </section>
 
+      {/* Phân trang */}
       <Pagination
         currentPage={currentPage}
         totalItems={filteredCouncils.length}
@@ -858,411 +825,333 @@ function CouncilsContent() {
         itemLabel="hội đồng"
       />
 
+      {/* ── MODAL 3 BƯỚC THÀNH LẬP HỘI ĐỒNG MỚI ── */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/50 p-4">
-          <div className="my-8 flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 space-y-5 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+            
+            {/* Header Modal */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0 select-none">
               <div>
-                <h2 className="text-base font-semibold text-slate-900">
-                  {editingCouncilId ? 'Cập nhật Hội đồng' : 'Thành lập Hội đồng'}
+                <span className="px-2 py-0.5 bg-sky-50 text-[#0A6EBD] border border-sky-200 rounded text-[10px] font-bold font-mono">
+                  BƯỚC {modalStep} / 3
+                </span>
+                <h2 className="text-base font-bold text-slate-900 mt-0.5">
+                  {editingCouncilId ? 'Chỉnh sửa Hội đồng' : 'Tạo Hội đồng'}
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Dữ liệu được tách thành thông tin Hội đồng, thành viên và phân công đề tài.
-                </p>
               </div>
-              <button
-                type="button"
-                onClick={resetModal}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                aria-label="Đóng"
-              >
-                <X className="h-5 w-5" />
+              <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer">
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-1 border-b border-slate-200 bg-slate-50 px-6 py-2">
+            {/* Stepper Wizard Bar */}
+            <div className="grid grid-cols-3 gap-2 shrink-0 select-none">
               {[
-                { id: 1 as const, label: 'Thông tin Hội đồng' },
-                { id: 2 as const, label: 'Thành viên' },
-                { id: 3 as const, label: 'Đề tài & phản biện' },
-              ].map((step) => (
-                <button
-                  key={step.id}
-                  type="button"
-                  onClick={() => setModalStep(step.id)}
-                  className={`rounded-lg px-3 py-2 text-sm font-medium ${
-                    modalStep === step.id ? 'bg-white text-[#0A6EBD] shadow-sm' : 'text-slate-500'
+                { step: 1, label: '1. Thông tin chung' },
+                { step: 2, label: '2. Chọn đề tài' },
+                { step: 3, label: '3. Thành viên & Phản biện' },
+              ].map((item) => (
+                <div
+                  key={item.step}
+                  className={`p-2 rounded-lg border text-center font-bold text-[11px] transition ${
+                    modalStep === item.step
+                      ? 'bg-sky-50 border-[#0A6EBD] text-[#0A6EBD]'
+                      : modalStep > item.step
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      : 'bg-slate-50 border-slate-200 text-slate-400'
                   }`}
                 >
-                  {step.id}. {step.label}
-                </button>
+                  {item.label}
+                </div>
               ))}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
+            {/* Body Wizard Content */}
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+              {/* BƯỚC 1: THÔNG TIN CHUNG */}
               {modalStep === 1 && (
-                <div className="space-y-5">
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <Field label="Mã Hội đồng *">
+                <div className="space-y-3.5">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Mã Hội đồng *</label>
                       <input
+                        type="text"
                         value={formData.code}
-                        onChange={(event) => setFormData({ ...formData, code: event.target.value })}
+                        onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                         className={INPUT_CLASS}
                       />
-                    </Field>
-                    <Field label="Loại Hội đồng *">
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Loại Hội đồng *</label>
                       <select
                         value={formData.type}
-                        disabled={Boolean(editingCouncilId)}
-                        onChange={(event) => handleCouncilTypeChange(event.target.value as CouncilType)}
+                        onChange={(e) => setFormData({ ...formData, type: e.target.value as CouncilType, selectedProjectIds: [] })}
                         className={INPUT_CLASS}
                       >
-                        <option value="PROPOSAL_REVIEW">Xét duyệt đề cương</option>
-                        <option value="ACCEPTANCE">Nghiệm thu</option>
+                        <option value="PROPOSAL_REVIEW">Hội đồng Xét duyệt Đề cương</option>
+                        <option value="ACCEPTANCE">Hội đồng Nghiệm thu Kết quả</option>
                       </select>
-                    </Field>
+                    </div>
                   </div>
 
-                  <Field label="Tên Hội đồng *">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Tên Hội đồng *</label>
                     <input
+                      type="text"
+                      placeholder="Ví dụ: Hội đồng Xét duyệt Đề cương NCKH Đợt 1 năm 2026 - Khối Ngoại"
                       value={formData.name}
-                      onChange={(event) => setFormData({ ...formData, name: event.target.value })}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       className={INPUT_CLASS}
                     />
-                  </Field>
+                  </div>
 
-                  <Field label="Khối chuyên môn">
-                    <select
-                      value={formData.specialtyCluster}
-                      onChange={(event) =>
-                        setFormData({ ...formData, specialtyCluster: event.target.value })
-                      }
-                      className={INPUT_CLASS}
-                    >
-                      {SPECIALTY_CLUSTERS.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                    <Field label="Hình thức họp">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Khối chuyên môn</label>
                       <select
-                        value={formData.meetingFormat}
-                        onChange={(event) =>
-                          setFormData({
-                            ...formData,
-                            meetingFormat: event.target.value as CouncilForm['meetingFormat'],
-                          })
-                        }
+                        value={formData.specialtyCluster}
+                        onChange={(e) => setFormData({ ...formData, specialtyCluster: e.target.value })}
                         className={INPUT_CLASS}
                       >
-                        <option value="OFFLINE">Trực tiếp</option>
-                        <option value="ONLINE">Trực tuyến</option>
-                        <option value="HYBRID">Kết hợp</option>
+                        {SPECIALTY_CLUSTERS.map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
                       </select>
-                    </Field>
-                    <Field label="Ngày họp *">
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Số Quyết định thành lập</label>
+                      <input
+                        type="text"
+                        placeholder="Ví dụ: 125/QĐ-BV"
+                        value={formData.establishmentDecisionNumber}
+                        onChange={(e) => setFormData({ ...formData, establishmentDecisionNumber: e.target.value })}
+                        className={INPUT_CLASS}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Ngày quyết định</label>
+                      <input type="date" value={formData.establishmentDecisionDate} onChange={(e) => setFormData({ ...formData, establishmentDecisionDate: e.target.value })} className={INPUT_CLASS} />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Người ký quyết định</label>
+                      <input type="text" value={formData.establishmentSignatoryName} onChange={(e) => setFormData({ ...formData, establishmentSignatoryName: e.target.value })} className={INPUT_CLASS} placeholder="Họ tên người ký" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Ngày họp *</label>
                       <input
                         type="date"
                         value={formData.meetingDate}
-                        onChange={(event) =>
-                          setFormData({ ...formData, meetingDate: event.target.value })
-                        }
+                        onChange={(e) => setFormData({ ...formData, meetingDate: e.target.value })}
                         className={INPUT_CLASS}
                       />
-                    </Field>
-                    <Field label="Giờ họp">
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Giờ họp</label>
                       <input
                         type="time"
                         value={formData.meetingTime}
-                        onChange={(event) =>
-                          setFormData({ ...formData, meetingTime: event.target.value })
-                        }
+                        onChange={(e) => setFormData({ ...formData, meetingTime: e.target.value })}
                         className={INPUT_CLASS}
                       />
-                    </Field>
-                    <Field label="Địa điểm">
-                      <input
-                        value={formData.location}
-                        onChange={(event) =>
-                          setFormData({ ...formData, location: event.target.value })
-                        }
-                        className={INPUT_CLASS}
-                      />
-                    </Field>
-                  </div>
-
-                  {formData.meetingFormat !== 'OFFLINE' && (
-                    <Field label="Liên kết họp trực tuyến">
-                      <input
-                        value={formData.onlineMeetingUrl}
-                        onChange={(event) =>
-                          setFormData({ ...formData, onlineMeetingUrl: event.target.value })
-                        }
-                        className={INPUT_CLASS}
-                      />
-                    </Field>
-                  )}
-
-                  {(canIssueEstablishmentDecision || formData.decisionStatus === 'ISSUED') && (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                      <h3 className="text-sm font-semibold text-slate-900">
-                        Quyết định thành lập Hội đồng
-                      </h3>
-                      <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <Field label="Số quyết định">
-                          <input
-                            value={formData.establishmentDecisionNumber}
-                            onChange={(event) =>
-                              setFormData({
-                                ...formData,
-                                establishmentDecisionNumber: event.target.value,
-                              })
-                            }
-                            disabled={!canIssueEstablishmentDecision}
-                            className={INPUT_CLASS}
-                          />
-                        </Field>
-                        <Field label="Ngày ban hành">
-                          <input
-                            type="date"
-                            value={formData.decisionDate}
-                            onChange={(event) =>
-                              setFormData({ ...formData, decisionDate: event.target.value })
-                            }
-                            disabled={!canIssueEstablishmentDecision}
-                            className={INPUT_CLASS}
-                          />
-                        </Field>
-                      </div>
                     </div>
-                  )}
-                </div>
-              )}
-
-              {modalStep === 2 && (
-                <div className="space-y-5">
-                  <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
-                    Hội đồng hiện cần tối thiểu <strong>{councilRules.minMembers}</strong> thành viên
-                    {councilRules.maxMembers ? ` và tối đa ${councilRules.maxMembers}` : ''} theo cấu hình của các đề tài đã chọn.
-                  </div>
-
-                  {hasDuplicateCouncilMember && (
-                    <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-                      <AlertTriangle className="h-4 w-4" /> Có thành viên đang được chọn trùng vị trí.
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <UserSelect
-                      label="Chủ tịch Hội đồng *"
-                      value={formData.chairId}
-                      users={candidateUsers}
-                      onChange={(id) => setFormData({ ...formData, chairId: id })}
-                    />
-                    <UserSelect
-                      label="Thư ký Hội đồng *"
-                      value={formData.secretaryId}
-                      users={candidateUsers}
-                      onChange={(id) => setFormData({ ...formData, secretaryId: id })}
-                    />
-                  </div>
-
-                  <div className="rounded-xl border border-slate-200 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-sm font-semibold text-slate-900">Ủy viên Hội đồng</h3>
-                      <span className="text-xs text-slate-500">Tổng: {totalMembersCount} thành viên</span>
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-                      {[0, 1, 2].map((index) => (
-                        <UserSelect
-                          key={index}
-                          label={`Ủy viên ${index + 1}${index === 0 ? ' *' : ''}`}
-                          value={formData.memberIds[index] ?? ''}
-                          users={candidateUsers}
-                          allowEmpty={index > 0}
-                          onChange={(id) => {
-                            const next = [...formData.memberIds];
-                            next[index] = id;
-                            setFormData({
-                              ...formData,
-                              memberIds: next.filter((value, itemIndex) => value || itemIndex <= index),
-                            });
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {modalStep === 3 && (
-                <div className="space-y-4">
-                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-semibold text-slate-900">Đề tài đủ điều kiện</h3>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Chỉ hiển thị đề tài đã tới đúng gate nghiệp vụ của loại Hội đồng này.
-                      </p>
+                      <label className="block font-bold text-slate-700 mb-1">Hình thức họp</label>
+                      <select
+                        value={formData.meetingFormat}
+                        onChange={(e) => setFormData({ ...formData, meetingFormat: e.target.value as CouncilForm['meetingFormat'] })}
+                        className={INPUT_CLASS}
+                      >
+                        <option value="OFFLINE">Trực tiếp (Tại phòng họp)</option>
+                        <option value="ONLINE">Trực tuyến (Online)</option>
+                        <option value="HYBRID">Kết hợp (Hybrid)</option>
+                      </select>
                     </div>
-                    {hasAnyConflict && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
-                        <AlertTriangle className="h-3.5 w-3.5" /> Có xung đột lợi ích
-                      </span>
-                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* BƯỚC 2: CHỌN ĐỀ TÀI */}
+              {modalStep === 2 && (
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                    <span className="font-bold text-slate-800">
+                      Đề tài đủ điều kiện đưa ra Hội đồng ({availableProjects.length})
+                    </span>
+                    <span className="font-mono text-xs font-bold text-[#0A6EBD]">
+                      Đã chọn: {formData.selectedProjectIds.length} đề tài
+                    </span>
                   </div>
 
-                  {availableProjects.length === 0 ? (
-                    <div className="rounded-xl border border-slate-200 p-8 text-center text-sm text-slate-500">
-                      Không có đề tài đủ điều kiện để đưa vào Hội đồng này.
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {availableProjects.map((project) => {
-                        const selected = formData.selectedProjectIds.includes(project.id);
-                        const assignment = formData.projectAssignments[project.id];
-
+                  <div className="space-y-2 max-h-[320px] overflow-y-auto">
+                    {availableProjects.length === 0 ? (
+                      <p className="text-center py-8 text-slate-400">Không có đề tài nào đủ điều kiện đưa ra Hội đồng ở giai đoạn này.</p>
+                    ) : (
+                      availableProjects.map((p) => {
+                        const isSelected = formData.selectedProjectIds.includes(p.id);
                         return (
-                          <div
-                            key={project.id}
-                            className={`rounded-xl border ${
-                              selected ? 'border-sky-300 bg-sky-50/30' : 'border-slate-200 bg-white'
+                          <label
+                            key={p.id}
+                            className={`flex items-start gap-3 p-3 rounded-xl border transition cursor-pointer select-none ${
+                              isSelected ? 'bg-sky-50/60 border-[#0A6EBD]' : 'bg-white border-slate-200 hover:bg-slate-50'
                             }`}
                           >
-                            <label className="flex cursor-pointer items-start gap-3 p-4">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                const newIds = checked
+                                  ? [...formData.selectedProjectIds, p.id]
+                                  : formData.selectedProjectIds.filter((id) => id !== p.id);
+                                setFormData({ ...formData, selectedProjectIds: newIds });
+                              }}
+                              className="mt-1 text-[#0A6EBD] focus:ring-[#0A6EBD]"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <span className="font-mono font-bold text-xs text-[#0A6EBD] block">
+                                {p.projectCode || p.proposalCode}
+                              </span>
+                              <p className="font-bold text-slate-900 leading-snug">{p.title}</p>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Chủ nhiệm: <strong>{p.principalInvestigatorName}</strong> • {p.departmentName}
+                              </p>
+                            </div>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* BƯỚC 3: THÀNH VIÊN HỘI ĐỒNG */}
+              {modalStep === 3 && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Chủ tịch Hội đồng *</label>
+                      <select
+                        value={formData.chairId}
+                        onChange={(e) => setFormData({ ...formData, chairId: e.target.value })}
+                        className={INPUT_CLASS}
+                      >
+                        <option value="">-- Chọn Chủ tịch --</option>
+                        {eligibleCandidateUsers.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.fullName} ({u.academicTitle || u.degree || 'Bác sĩ'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Thư ký Hội đồng *</label>
+                      <select
+                        value={formData.secretaryId}
+                        onChange={(e) => setFormData({ ...formData, secretaryId: e.target.value })}
+                        className={INPUT_CLASS}
+                      >
+                        <option value="">-- Chọn Thư ký --</option>
+                        {eligibleCandidateUsers.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.fullName} ({u.academicTitle || u.degree || 'Chuyên viên'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-800">
+                      Hệ thống đã loại Chủ nhiệm và thành viên nhóm nghiên cứu của các đề tài đang chọn khỏi danh sách nhân sự Hội đồng để hạn chế xung đột lợi ích.
+                    </div>
+                    <label className="block font-bold text-slate-700 mb-1">Ủy viên / Phản biện</label>
+                    <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200">
+                      {eligibleCandidateUsers
+                        .filter((u) => u.id !== formData.chairId && u.id !== formData.secretaryId)
+                        .map((u) => {
+                          const isChecked = formData.memberIds.includes(u.id);
+                          return (
+                            <label key={u.id} className="flex items-center gap-2 p-2 bg-white rounded-lg border border-slate-200 cursor-pointer select-none">
                               <input
                                 type="checkbox"
-                                checked={selected}
-                                onChange={() => toggleProject(project)}
-                                className="mt-1 h-4 w-4"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  const newMembers = checked
+                                    ? [...formData.memberIds, u.id]
+                                    : formData.memberIds.filter((id) => id !== u.id);
+                                  setFormData({ ...formData, memberIds: newMembers });
+                                }}
+                                className="text-[#0A6EBD]"
                               />
-                              <div className="min-w-0 flex-1">
-                                <div className="font-mono text-xs font-semibold text-[#0A6EBD]">
-                                  {project.projectCode || project.proposalCode}
-                                </div>
-                                <div className="mt-1 text-sm font-semibold text-slate-900">
-                                  {project.title}
-                                </div>
-                                <div className="mt-1 text-xs text-slate-500">
-                                  Chủ nhiệm: {project.principalInvestigatorName} · {project.departmentName}
-                                </div>
-                              </div>
+                              <span className="font-semibold text-slate-800 text-xs truncate">
+                                {u.fullName}
+                              </span>
                             </label>
-
-                            {selected && assignment && (
-                              <div className="border-t border-slate-200 bg-slate-50 p-4">
-                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                                  {assignment.reviewerAssignments.map((reviewer) => {
-                                    const conflict = hasConflictOfInterest(project, reviewer.reviewerId);
-                                    return (
-                                      <Field
-                                        key={reviewer.reviewerOrder}
-                                        label={`Phản biện ${reviewer.reviewerOrder} *`}
-                                      >
-                                        <select
-                                          value={reviewer.reviewerId}
-                                          onChange={(event) =>
-                                            updateReviewer(
-                                              project.id,
-                                              reviewer.reviewerOrder,
-                                              event.target.value
-                                            )
-                                          }
-                                          className={`${INPUT_CLASS} ${conflict ? 'border-rose-400 bg-rose-50' : ''}`}
-                                        >
-                                          <option value="">-- Chọn phản biện --</option>
-                                          {candidateUsers.map((user) => (
-                                            <option key={user.id} value={user.id}>
-                                              {user.fullName} ({user.academicTitle})
-                                            </option>
-                                          ))}
-                                        </select>
-                                        {conflict && (
-                                          <p className="mt-1 text-xs text-rose-600">
-                                            Người này là Chủ nhiệm/Thành viên của đề tài.
-                                          </p>
-                                        )}
-                                      </Field>
-                                    );
-                                  })}
-                                </div>
-
-                                <Field label="Ghi chú phân công">
-                                  <textarea
-                                    rows={2}
-                                    value={assignment.notes}
-                                    onChange={(event) =>
-                                      updateAssignmentNotes(project.id, event.target.value)
-                                    }
-                                    className={`${INPUT_CLASS} resize-none`}
-                                  />
-                                </Field>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
             </div>
 
-            <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-4">
-              <div>
-                {modalStep > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setModalStep((modalStep - 1) as ModalStep)}
-                    className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-                  >
-                    Quay lại
-                  </button>
-                )}
-              </div>
+            {/* Footer Modal Actions */}
+            <div className="border-t border-slate-100 pt-3 flex items-center justify-between shrink-0 select-none">
+              <button
+                type="button"
+                onClick={() => {
+                  if (modalStep > 1) setModalStep((modalStep - 1) as ModalStep);
+                  else setShowCreateModal(false);
+                }}
+                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold transition cursor-pointer"
+              >
+                {modalStep === 1 ? 'Hủy bỏ' : '← Quay lại'}
+              </button>
 
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={resetModal}
-                  className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-                >
-                  Hủy
-                </button>
-
                 {modalStep < 3 ? (
                   <button
                     type="button"
-                    onClick={() => setModalStep((modalStep + 1) as ModalStep)}
-                    className="rounded-lg bg-[#0A6EBD] px-4 py-2 text-sm font-semibold text-white hover:bg-[#085896]"
+                    onClick={() => {
+                      if (modalStep === 1 && !formData.name.trim()) {
+                        warning('Vui lòng nhập Tên Hội đồng');
+                        return;
+                      }
+                      if (modalStep === 2 && formData.selectedProjectIds.length === 0) {
+                        warning('Vui lòng chọn ít nhất 1 đề tài');
+                        return;
+                      }
+                      setModalStep((modalStep + 1) as ModalStep);
+                    }}
+                    className="px-4 py-2 bg-[#0A6EBD] hover:bg-[#085896] text-white font-bold rounded-lg shadow-2xs transition cursor-pointer"
                   >
-                    Tiếp tục
+                    Tiếp tục →
                   </button>
                 ) : (
                   <>
-                    {canManageCouncil && (
-                      <button
-                        type="button"
-                        onClick={() => saveCouncil(false)}
-                        className="rounded-lg border border-[#0A6EBD] bg-white px-4 py-2 text-sm font-semibold text-[#0A6EBD] hover:bg-sky-50"
-                      >
-                        {isEditingDraft ? 'Lưu cập nhật' : 'Lưu dự thảo'}
-                      </button>
-                    )}
-
-                    {canIssueEstablishmentDecision && editingCouncilId && (
-                      <button
-                        type="button"
-                        onClick={() => saveCouncil(true)}
-                        className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-                      >
-                        Ban hành quyết định thành lập
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleSaveCouncil('DRAFT')}
+                      className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-bold transition cursor-pointer"
+                    >
+                      Lưu dự thảo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveCouncil('ESTABLISHED')}
+                      className="inline-flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-2xs transition cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" /> Xác nhận thành lập
+                    </button>
                   </>
                 )}
               </div>
@@ -1270,62 +1159,13 @@ function CouncilsContent() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold text-slate-700">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function UserSelect({
-  label,
-  value,
-  users,
-  allowEmpty = false,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  users: User[];
-  allowEmpty?: boolean;
-  onChange: (id: string) => void;
-}) {
-  return (
-    <Field label={label}>
-      <select value={value} onChange={(event) => onChange(event.target.value)} className={INPUT_CLASS}>
-        {(allowEmpty || !value) && <option value="">-- Chọn người --</option>}
-        {users.map((user) => (
-          <option key={user.id} value={user.id}>
-            {user.fullName} ({user.academicTitle})
-          </option>
-        ))}
-      </select>
-    </Field>
-  );
-}
-
-function hasConflictOfInterest(project: ResearchProject, userId: string) {
-  if (!userId) return false;
-  if (project.principalInvestigatorId === userId) return true;
-  return project.members.some((member) => member.userId === userId);
-}
-
 export default function CouncilsListPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-slate-500">Đang tải dữ liệu Hội đồng...</div>}>
+    <Suspense fallback={<div className="p-8 text-center text-slate-500 font-medium">Đang tải dữ liệu Hội đồng...</div>}>
       <CouncilsContent />
     </Suspense>
   );

@@ -380,10 +380,21 @@ export type AcceptanceEvaluation = {
   projectId: string;
   councilId: string;
   conclusion: AcceptanceConclusion;
-  ratingLabel?: string;         // Từ AcceptanceRatingLevel (cấu hình được)
+  ratingLabel?: string;         
   scoreTotal?: number;
   revisionItems?: PostAcceptanceRevision[];
   minutesUrl?: string;
+  concludedAt: string;
+  concludedBy: string;
+};
+
+export type ProposalEvaluation = {
+  id: string;
+  projectId: string;
+  councilId: string;
+  conclusion: 'APPROVED' | 'APPROVED_WITH_REVISION' | 'REJECTED';
+  averageScore?: number;
+  revisionRequirements?: string;
   concludedAt: string;
   concludedBy: string;
 };
@@ -420,7 +431,7 @@ export type ProjectMilestone = {
 export type ProgressReport = {
   id: string;
   projectId: string;
-  period: string;           // Tên kỳ báo cáo (theo cấu hình đợt, không hardcode chu kỳ)
+  period: string;           
   reportingDate: string;
   workCompleted: string;
   resultsAchieved: string;
@@ -451,10 +462,6 @@ export type ChangeRequestType =
   | 'TERMINATION'           // Chấm dứt
   | 'OTHER';                // Khác
 
-/**
- * ChangeRequestDiff – Bảng so sánh giá trị hiện tại vs đề nghị
- * Không cho sửa dữ liệu gốc; chỉ cập nhật khi ChangeRequestStatus = APPROVED.
- */
 export type ChangeRequestDiff = {
   fieldName: string;
   currentValue: string;
@@ -480,9 +487,6 @@ export type ChangeRequest = {
   responseComment?: string;
 };
 
-/**
- * EthicsReviewType – Loại xem xét đạo đức (không hardcode thời hạn)
- */
 export type EthicsReviewType = 'EXEMPT' | 'EXPEDITED' | 'FULL_BOARD';
 
 export type EthicsApproval = {
@@ -516,6 +520,7 @@ export type AcceptanceDossier = {
   projectId: string;
   submissionDate: string;
   finalReportUrl?: string;
+  reviewComment?: string;
   productsSummary: string;
   productsCommitted: string;   // Sản phẩm cam kết ban đầu (đối chiếu)
   productsActual: string;      // Sản phẩm thực tế bàn giao
@@ -539,13 +544,10 @@ export type AcceptanceDossier = {
   notes?: string;
 };
 
-/**
- * PostAcceptanceRevision – Ý kiến hoàn thiện sau Nghiệm thu
- * Điều kiện lập Quyết định Công nhận: tất cả revision đã CONFIRMED
- */
 export type PostAcceptanceRevision = {
   id: string;
-  councilFeedback: string;     // Ý kiến của Hội đồng
+  councilFeedback: string;
+  comments?: string;     // Ý kiến của Hội đồng
   piResponse?: string;         // Phản hồi của Chủ nhiệm đề tài
   evidenceUrl?: string;
   status: 'PENDING' | 'RESPONDED' | 'CONFIRMED'; // Người có thẩm quyền theo cấu hình quy trình
@@ -621,6 +623,8 @@ export type CouncilMember = {
   departmentName: string;
   roleInCouncil: CouncilRole;
   hasConflictOfInterest: boolean;
+  canEvaluate?: boolean;
+  canVote?: boolean;
 };
 
 export type EvaluationScoreItem = {
@@ -646,29 +650,65 @@ export type EvaluationResult = {
   recommendations?: string;
   submittedAt: string;
   status: 'DRAFT' | 'SUBMITTED' | 'SIGNED';
-  signedBy?: string; // Tên người ký hiển thị; production nên lưu thêm signerUserId nếu cần đối soát
+  updatedAt?: string;
+  signedByUserId?: string;
+  signedByName?: string;
   signedAt?: string;
+};
+
+export type CouncilConclusion =
+  | 'APPROVED'
+  | 'APPROVED_WITH_REVISION'
+  | 'REJECTED'
+  | 'RE_EVALUATE';
+
+export type MeetingMinutesStatus =
+  | 'DRAFT'
+  | 'PENDING_CHAIR_CONFIRMATION'
+  | 'CONFIRMED'
+  | 'SIGNED';
+
+export type MeetingMinutesProjectResult = {
+  projectId: string;
+  conclusion: CouncilConclusion;
+  summaryOpinion: string;
+  averageScore?: number;
+  passVoteCount: number;
+  totalVoteCount: number;
+  ratingLabel?: string;
+  revisionRequirements?: string;
+};
+
+export type CouncilAttendance = {
+  councilMemberId: string;
+  userId: string;
+  attended: boolean;
+  attendanceMode?: 'OFFLINE' | 'ONLINE';
+  absenceReason?: string;
+  eligibleToVote: boolean;
 };
 
 export type MeetingMinutes = {
   id: string;
   councilId: string;
-  projectId: string;
   meetingDate: string;
   location: string;
   secretaryId: string;
   secretaryName: string;
   chairId: string;
   chairName: string;
-  attendeesCount: number;
+  attendance: CouncilAttendance[];
   summaryOpinions: string;
-  conclusion: 'APPROVED' | 'APPROVED_WITH_REVISION' | 'REJECTED' | 'RE_EVALUATE';
-  averageScore: number;
-  passVoteCount: number;
-  totalVoteCount: number;
-  ratingLabel?: string;     // Lấy từ AcceptanceRatingLevel (cho Hội đồng Nghiệm thu)
-  revisionRequirements?: string;
-  status: 'DRAFT' | 'CONFIRMED' | 'SIGNED';
+  projectResults: MeetingMinutesProjectResult[];
+  status: MeetingMinutesStatus;
+  createdAt: string;
+  createdBy: string;
+  updatedAt?: string;
+  submittedForChairAt?: string;
+  submittedForChairBy?: string;
+  chairFeedback?: string;
+  chairConfirmedAt?: string;
+  chairConfirmedBy?: string;
   secretarySignedAt?: string;
   chairSignedAt?: string;
 };
@@ -693,22 +733,22 @@ export type Council = {
   projectAssignments?: CouncilProjectAssignment[];
   criteriaSetId?: string;         // Liên kết bộ tiêu chí theo cấu hình
   scoringCriteriaSnapshot?: { id: string; name: string; maxScore: number; weight: number; isRequired: boolean }[];
-  ratingScheme?: AcceptanceRatingLevel[]; // Cho Hội đồng Nghiệm thu
-  minMembers?: number;            // Số thành viên tối thiểu (cấu hình)
-  maxMembers?: number;            // Số thành viên tối đa (cấu hình)
-  requiredReviewerCount?: number; // Số phản biện bắt buộc (cấu hình)
+  ratingSchemeSnapshot?: AcceptanceRatingLevel[]; // Snapshot mức xếp loại tại thời điểm thành lập Hội đồng
+  minMembers?: number;            // Snapshot từ WorkflowPolicy tại thời điểm thành lập Hội đồng
+  maxMembers?: number;            // Snapshot từ WorkflowPolicy tại thời điểm thành lập Hội đồng
+  requiredReviewerCount?: number; // Snapshot từ WorkflowPolicy tại thời điểm thành lập Hội đồng
   establishmentDecisionNumber?: string;
-  decisionDate?: string;
-  decisionStatus?: 'DRAFT' | 'SUBMITTED' | 'ISSUED';
-  signatoryName?: string;
-  signatoryRole?: string;
+  establishmentDecisionDate?: string;
+  establishmentDecisionStatus?: 'DRAFT' | 'SUBMITTED' | 'ISSUED';
+  establishmentSignatoryName?: string;
+  establishmentSignatoryRole?: string;
   meetingDate: string;
   meetingTime?: string;
   meetingFormat?: 'OFFLINE' | 'ONLINE' | 'HYBRID';
   location: string;
   onlineMeetingUrl?: string;
   sendInvitationNotification?: boolean;
-  minPassRatio: number;
+  minPassRatio: number;            // Snapshot từ WorkflowPolicy tại thời điểm thành lập Hội đồng
   status: CouncilStatus;
   members: CouncilMember[];
   minutes?: MeetingMinutes[];
@@ -797,6 +837,8 @@ export interface WorkflowPolicy {
     requiredReviewerCount?: number;
     minSignedEvaluationsBeforeMinutes?: number;
     minPassRatio?: number;
+    secretaryCanEvaluate?: boolean;
+    secretaryCanVote?: boolean;
   };
   decisionPolicy?: {
     allowReturnForRevision?: boolean;
@@ -895,6 +937,8 @@ export type ResearchProject = {
   changeRequests: ChangeRequest[];
   ethicsApproval?: EthicsApproval;
   acceptanceDossier?: AcceptanceDossier;
+  proposalEvaluations?: ProposalEvaluation[];
+  acceptanceEvaluations?: AcceptanceEvaluation[];
   financialSummary?: FinancialSummary;
   decisions: Decision[];
   contract?: ResearchContract;               // Tuỳ chọn

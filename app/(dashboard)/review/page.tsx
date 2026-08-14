@@ -1,377 +1,261 @@
 'use client';
 
-import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { repo } from '@/lib/repository';
+import { useAuth } from '@/lib/auth-context';
+import { useToast } from '@/components/ui/Toast';
+import { Pagination } from '@/components/ui/Pagination';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { formatDate } from '@/lib/utils';
+import type { ProposalStatus, ResearchProject } from '@/lib/types';
 import {
-  Check,
   CheckCircle2,
-  ClipboardCheck,
   Eye,
-  FileBox,
+  FileCheck2,
   FileText,
   Filter,
   RotateCcw,
   Search,
   X,
-  XCircle,
 } from 'lucide-react';
 
-import { repo } from '@/lib/repository';
-import { useAuth } from '@/lib/auth-context';
-import { useToast } from '@/components/ui/Toast';
-import { StatusBadge } from '@/components/ui/StatusBadge';
-import { Pagination } from '@/components/ui/Pagination';
-import {
-  AcceptanceDossier,
-  AcceptanceDossierStatus,
-  ProposalStatus,
-  ResearchProject,
-} from '@/lib/types';
+type ReviewTab = 'PROPOSALS' | 'ACCEPTANCE';
+type ReviewDecision = 'ADMIN_VALIDATED' | 'REVISION_REQUIRED' | 'REJECTED';
 
-type WorkspaceTab = 'PROPOSAL' | 'ACCEPTANCE';
 
-type ProposalReviewAction =
-  | 'ADMIN_VALIDATED'
-  | 'REVISION_REQUIRED'
-  | 'REJECTED';
 
-type AcceptanceReviewAction =
-  | 'ELIGIBLE_FOR_ACCEPTANCE'
-  | 'REVISION_REQUIRED';
-
-type ReviewAction =
-  | ProposalReviewAction
-  | AcceptanceReviewAction
-  | null;
-
-type ProposalChecklist = {
-  eligibleApplicant: boolean;
-  requiredDocuments: boolean;
-  budgetDeclared: boolean;
-  ethicsDeclared: boolean;
-};
-
-type AcceptanceChecklist = NonNullable<
-  AcceptanceDossier['checklistResults']
->;
-
-const EMPTY_PROPOSAL_CHECKLIST: ProposalChecklist = {
-  eligibleApplicant: false,
-  requiredDocuments: false,
-  budgetDeclared: false,
-  ethicsDeclared: false,
-};
-
-const EMPTY_ACCEPTANCE_CHECKLIST: AcceptanceChecklist = {
-  finalReportSubmitted: false,
-  productsCompleted: false,
-  evidenceValid: false,
-  progressReportsCompleted: false,
-  noPendingChangeRequests: false,
-  ethicsValid: false,
-  financeConditionMet: false,
-  publicationsIfRequired: false,
-};
-
-const PROPOSAL_CHECKLIST_ITEMS: Array<{
-  key: keyof ProposalChecklist;
-  label: string;
-}> = [
-  {
-    key: 'eligibleApplicant',
-    label: 'Đúng đối tượng/chủ thể đăng ký theo policy áp dụng',
-  },
-  {
-    key: 'requiredDocuments',
-    label: 'Đã có đủ tài liệu bắt buộc của hồ sơ đăng ký',
-  },
-  {
-    key: 'budgetDeclared',
-    label: 'Thông tin dự toán/nguồn kinh phí đã được khai báo đầy đủ',
-  },
-  {
-    key: 'ethicsDeclared',
-    label: 'Đã khai báo thông tin sàng lọc đạo đức nghiên cứu',
-  },
-];
-
-const ACCEPTANCE_CHECKLIST_ITEMS: Array<{
-  key: keyof AcceptanceChecklist;
-  label: string;
-}> = [
-  {
-    key: 'finalReportSubmitted',
-    label: 'Đã nộp báo cáo tổng kết',
-  },
-  {
-    key: 'productsCompleted',
-    label: 'Đã bàn giao các sản phẩm cam kết',
-  },
-  {
-    key: 'evidenceValid',
-    label: 'Minh chứng kết quả đầy đủ và hợp lệ',
-  },
-  {
-    key: 'progressReportsCompleted',
-    label: 'Đã hoàn thành các báo cáo tiến độ bắt buộc',
-  },
-  {
-    key: 'noPendingChangeRequests',
-    label: 'Không còn yêu cầu điều chỉnh đang xử lý',
-  },
-  {
-    key: 'ethicsValid',
-    label: 'Điều kiện đạo đức phù hợp/không áp dụng',
-  },
-  {
-    key: 'financeConditionMet',
-    label: 'Đáp ứng điều kiện tài chính theo policy',
-  },
-  {
-    key: 'publicationsIfRequired',
-    label: 'Đáp ứng yêu cầu công bố nếu policy bắt buộc',
-  },
-];
-
-function ReviewWorkspaceContent() {
+export default function ReviewDossierPage() {
   const { currentUser } = useAuth();
-  const { success, warning, error, confirm } = useToast();
-  const searchParams = useSearchParams();
-  const urlId = searchParams.get('id');
+  const { success, warning, info } = useToast();
 
-  const [projects, setProjects] = useState<ResearchProject[]>(
-    repo.getProjects()
-  );
-  const [selectedProject, setSelectedProject] =
-    useState<ResearchProject | null>(null);
-
-  const [activeTab, setActiveTab] =
-    useState<WorkspaceTab>('PROPOSAL');
-
+  const [mounted, setMounted] = useState(false);
+  const [dataVersion, setDataVersion] = useState(0);
+  const [activeTab, setActiveTab] = useState<ReviewTab>('PROPOSALS');
   const [search, setSearch] = useState('');
   const [selectedDept, setSelectedDept] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  const [reviewAction, setReviewAction] =
-    useState<ReviewAction>(null);
-  const [reviewComment, setReviewComment] = useState('');
-  const [proposalChecklist, setProposalChecklist] =
-    useState<ProposalChecklist>(EMPTY_PROPOSAL_CHECKLIST);
-  const [acceptanceChecklist, setAcceptanceChecklist] =
-    useState<AcceptanceChecklist>(EMPTY_ACCEPTANCE_CHECKLIST);
+  const [receiveProject, setReceiveProject] = useState<ResearchProject | null>(null);
+  const [reviewProject, setReviewProject] = useState<ResearchProject | null>(null);
+  const [decision, setDecision] = useState<ReviewDecision>('ADMIN_VALIDATED');
+  const [comment, setComment] = useState('');
+  const [checklist, setChecklist] = useState({
+    investigator: false,
+    department: false,
+    forms: false,
+    signatures: false,
+    outline: false,
+    budget: false,
+  });
 
-  const departments = repo.getDepartments();
+  useEffect(() => setMounted(true), []);
 
-  /*
-   * Workspace này là hàng đợi nghiệp vụ của Phòng NCKH.
-   * DIRECTOR/SYSTEM_ADMIN không mặc định có quyền thẩm định hành chính.
-   */
-  const canReview = currentUser.role === 'RESEARCH_OFFICE';
+  const projects = useMemo(() => repo.getProjects(), [dataVersion]);
+  const departments = useMemo(() => repo.getDepartments(), []);
+  const canReview = currentUser?.role === 'RESEARCH_OFFICE' || currentUser?.role === 'ADMIN';
 
-  const proposalProjects = useMemo(
-    () =>
-      projects.filter((project) =>
-        [
-          'SUBMITTED',
-          'UNDER_ADMIN_REVIEW',
-          'RESUBMITTED',
-          'REVISION_REQUIRED',
-        ].includes(project.proposalStatus)
-      ),
-    [projects]
-  );
+  const proposalProjects = useMemo(() => {
+    const statuses = new Set([
+      'SUBMITTED',
+      'UNDER_ADMIN_REVIEW',
+      'REVISION_REQUIRED',
+      'RESUBMITTED',
+      'ADMIN_VALIDATED',
+      'OUTLINE_SUBMITTED',
+      'PROPOSAL_REVISION_REQUIRED',
+      'PROPOSAL_RESUBMITTED',
+      'UNDER_PROPOSAL_REVISION_REVIEW',
+    ]);
 
-  const acceptanceProjects = useMemo(
-    () =>
-      projects.filter(
-        (project) =>
-          project.acceptanceDossier &&
-          [
-            'SUBMITTED',
-            'UNDER_ADMIN_REVIEW',
-            'RESUBMITTED',
-            'REVISION_REQUIRED',
-          ].includes(project.acceptanceDossier.status)
-      ),
-    [projects]
-  );
+    return projects.filter((project) => statuses.has(String(project.proposalStatus)));
+  }, [projects]);
 
-  const activeProjectsList =
-    activeTab === 'PROPOSAL'
-      ? proposalProjects
-      : acceptanceProjects;
+  const acceptanceProjects = useMemo(() => {
+    const statuses = new Set([
+      'SUBMITTED',
+      'RESUBMITTED',
+      'UNDER_ADMIN_REVIEW',
+      'REVISION_REQUIRED',
+      'ELIGIBLE_FOR_ACCEPTANCE',
+      'FORWARDED_TO_COUNCIL',
+    ]);
 
-  const pendingProjects = activeProjectsList.filter(
-    (project) => {
+    return projects.filter((project) =>
+      Boolean(project.acceptanceDossier?.status && statuses.has(String(project.acceptanceDossier.status)))
+    );
+  }, [projects]);
+
+  const currentList = activeTab === 'PROPOSALS' ? proposalProjects : acceptanceProjects;
+
+  const filteredProjects = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    return currentList.filter((project) => {
       if (
         selectedDept !== 'ALL' &&
-        project.departmentId !== selectedDept
+        project.departmentId !== selectedDept &&
+        project.departmentName !== selectedDept
       ) {
         return false;
       }
 
       const workflowStatus =
-        activeTab === 'PROPOSAL'
-          ? project.proposalStatus
-          : project.acceptanceDossier?.status;
+        activeTab === 'PROPOSALS'
+          ? String(project.proposalStatus || '')
+          : String(project.acceptanceDossier?.status || '');
 
-      if (
-        selectedStatus !== 'ALL' &&
-        workflowStatus !== selectedStatus
-      ) {
-        return false;
-      }
+      if (selectedStatus !== 'ALL' && workflowStatus !== selectedStatus) return false;
 
-      const query = search.trim().toLowerCase();
-      if (!query) return true;
+      if (!q) return true;
 
       return [
-        project.title,
         project.proposalCode,
         project.projectCode,
+        project.title,
         project.principalInvestigatorName,
+        project.departmentName,
       ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
-        .includes(query);
-    }
-  );
+        .includes(q);
+    });
+  }, [activeTab, currentList, search, selectedDept, selectedStatus]);
 
-  const pagedProjects = pendingProjects.slice(
+  const pagedProjects = filteredProjects.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize
   );
 
-  const hasFilters =
-    selectedDept !== 'ALL' ||
-    selectedStatus !== 'ALL' ||
-    Boolean(search.trim());
+  const proposalCounts = useMemo(
+    () => ({
+      pending: proposalProjects.filter((p) => ['SUBMITTED', 'RESUBMITTED'].includes(String(p.proposalStatus))).length,
+      reviewing: proposalProjects.filter((p) => p.proposalStatus === 'UNDER_ADMIN_REVIEW').length,
+      revision: proposalProjects.filter((p) => ['REVISION_REQUIRED', 'PROPOSAL_REVISION_REQUIRED'].includes(String(p.proposalStatus))).length,
+      valid: proposalProjects.filter((p) => p.proposalStatus === 'ADMIN_VALIDATED').length,
+    }),
+    [proposalProjects]
+  );
 
-  const resetReviewState = (
-    project?: ResearchProject | null
-  ) => {
-    setReviewAction(null);
-    setReviewComment('');
-    setProposalChecklist(EMPTY_PROPOSAL_CHECKLIST);
-    setAcceptanceChecklist(
-      project?.acceptanceDossier?.checklistResults || {
-        ...EMPTY_ACCEPTANCE_CHECKLIST,
-      }
-    );
+  const acceptanceCounts = useMemo(
+    () => ({
+      pending: acceptanceProjects.filter((p) =>
+        ['SUBMITTED', 'RESUBMITTED'].includes(String(p.acceptanceDossier?.status))
+      ).length,
+      reviewing: acceptanceProjects.filter((p) => p.acceptanceDossier?.status === 'UNDER_ADMIN_REVIEW').length,
+      revision: acceptanceProjects.filter((p) => p.acceptanceDossier?.status === 'REVISION_REQUIRED').length,
+      eligible: acceptanceProjects.filter((p) => p.acceptanceDossier?.status === 'ELIGIBLE_FOR_ACCEPTANCE').length,
+    }),
+    [acceptanceProjects]
+  );
+
+  const resetFilters = () => {
+    setSearch('');
+    setSelectedDept('ALL');
+    setSelectedStatus('ALL');
+    setCurrentPage(1);
   };
 
-  useEffect(() => {
-    if (!urlId) return;
-
-    const project = projects.find(
-      (item) => item.id === urlId
-    );
-
-    if (!project) return;
-
-    const targetTab: WorkspaceTab =
-      project.acceptanceDossier &&
-      [
-        'SUBMITTED',
-        'RESUBMITTED',
-        'UNDER_ADMIN_REVIEW',
-        'REVISION_REQUIRED',
-      ].includes(project.acceptanceDossier.status)
-        ? 'ACCEPTANCE'
-        : 'PROPOSAL';
-
-    setActiveTab(targetTab);
-    setSelectedProject(project);
-    resetReviewState(project);
-  }, [urlId, projects]);
-
-  const handleOpenReview = (project: ResearchProject) => {
-    setSelectedProject(project);
-    resetReviewState(project);
-  };
-
-  const closeReview = () => {
-    setSelectedProject(null);
-    resetReviewState(null);
-  };
-
-  const refresh = () => {
-    setProjects(repo.getProjects());
+  const openReview = (project: ResearchProject) => {
+    setReviewProject(project);
+    setDecision('ADMIN_VALIDATED');
+    setComment('');
+    setChecklist({
+      investigator: false,
+      department: false,
+      forms: false,
+      signatures: false,
+      outline: false,
+      budget: false,
+    });
   };
 
   const handleReceive = () => {
-    if (!selectedProject || !canReview) return;
+    if (!receiveProject || !currentUser || !canReview) return;
 
-    if (activeTab === 'PROPOSAL') {
-      if (
-        selectedProject.proposalStatus !== 'SUBMITTED' &&
-        selectedProject.proposalStatus !== 'RESUBMITTED'
-      ) {
-        warning(
-          'Chỉ có thể tiếp nhận hồ sơ vừa nộp hoặc nộp lại.'
-        );
-        return;
-      }
+    const now = new Date().toISOString();
+    repo.updateProject(receiveProject.id, {
+      proposalStatus: 'UNDER_ADMIN_REVIEW',
+      updatedAt: now,
+    });
 
-      const fromStatus = selectedProject.proposalStatus;
-      const updated = repo.updateProject(selectedProject.id, {
-        proposalStatus: 'UNDER_ADMIN_REVIEW',
-      });
+    repo.addAuditLog({
+      userId: currentUser.id,
+      userFullName: currentUser.fullName,
+      userRole: currentUser.role,
+      actionCode: 'RECEIVE_PROPOSAL_DOSSIER',
+      entityType: 'PROJECT',
+      entityId: receiveProject.id,
+      fromStatus: receiveProject.proposalStatus,
+      toStatus: 'UNDER_ADMIN_REVIEW',
+      notes: `Tiếp nhận hồ sơ ${receiveProject.proposalCode}.`,
+    });
 
-      if (!updated) {
-        error('Không thể tiếp nhận hồ sơ đăng ký.');
-        return;
-      }
+    setReceiveProject(null);
+    setDataVersion((value) => value + 1);
+    success('Đã tiếp nhận hồ sơ.');
+  };
 
-      repo.addAuditLog({
-        userId: currentUser.id,
-        userFullName: currentUser.fullName,
-        userRole: currentUser.role,
-        actionCode: 'PROPOSAL_ADMIN_REVIEW_STARTED',
-        entityType: 'PROJECT',
-        entityId: selectedProject.id,
-        fromStatus,
-        toStatus: 'UNDER_ADMIN_REVIEW',
-        notes:
-          'Phòng NCKH tiếp nhận hồ sơ đăng ký và bắt đầu kiểm tra hành chính.',
-      });
+  const handleSubmitReview = () => {
+    if (!reviewProject || !currentUser || !canReview) return;
 
-      refresh();
-      setSelectedProject(updated);
-      success('Đã tiếp nhận hồ sơ đăng ký.');
+    const allPassed = Object.values(checklist).every(Boolean);
+
+    if (decision === 'ADMIN_VALIDATED' && !allPassed) {
+      warning('Chưa hoàn thành đầy đủ các tiêu chí kiểm tra bắt buộc.');
       return;
     }
 
-    const dossier = selectedProject.acceptanceDossier;
-
-    if (
-      !dossier ||
-      (dossier.status !== 'SUBMITTED' &&
-        dossier.status !== 'RESUBMITTED')
-    ) {
-      warning(
-        'Chỉ có thể tiếp nhận hồ sơ nghiệm thu vừa nộp hoặc nộp lại.'
-      );
+    if ((decision === 'REVISION_REQUIRED' || decision === 'REJECTED') && !comment.trim()) {
+      warning(decision === 'REVISION_REQUIRED' ? 'Vui lòng nhập nội dung yêu cầu bổ sung.' : 'Vui lòng nhập lý do không đủ điều kiện.');
       return;
     }
 
-    const previousStatus = dossier.status;
+    const now = new Date().toISOString();
+    repo.updateProject(reviewProject.id, {
+      proposalStatus: decision,
+      updatedAt: now,
+    });
 
-    const updatedDossier: AcceptanceDossier = {
-      ...dossier,
-      status: 'UNDER_ADMIN_REVIEW',
-    };
+    repo.addAuditLog({
+      userId: currentUser.id,
+      userFullName: currentUser.fullName,
+      userRole: currentUser.role,
+      actionCode: `REVIEW_PROPOSAL_${decision}`,
+      entityType: 'PROJECT',
+      entityId: reviewProject.id,
+      fromStatus: reviewProject.proposalStatus,
+      toStatus: decision,
+      notes: comment.trim() || 'Hoàn tất kiểm tra hồ sơ.',
+    });
 
-    const updated = repo.updateProject(selectedProject.id, {
-      acceptanceDossier: updatedDossier,
+    setReviewProject(null);
+    setComment('');
+    setDataVersion((value) => value + 1);
+
+    if (decision === 'ADMIN_VALIDATED') success('Đã xác nhận hồ sơ hợp lệ.');
+    else if (decision === 'REVISION_REQUIRED') warning('Đã chuyển hồ sơ về trạng thái chờ bổ sung.');
+    else info('Đã cập nhật kết quả kiểm tra hồ sơ.');
+  };
+
+  const handleReceiveProposalRevision = (project: ResearchProject) => {
+    if (!currentUser || !canReview) return;
+    if (project.proposalStatus !== 'PROPOSAL_RESUBMITTED') {
+      warning('Đề cương không ở trạng thái chờ tiếp nhận bản chỉnh sửa.');
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const updated = repo.updateProject(project.id, {
+      proposalStatus: 'UNDER_PROPOSAL_REVISION_REVIEW',
+      updatedAt: now,
     });
 
     if (!updated) {
-      error('Không thể tiếp nhận hồ sơ nghiệm thu.');
+      warning('Không thể tiếp nhận bản đề cương chỉnh sửa.');
       return;
     }
 
@@ -379,275 +263,164 @@ function ReviewWorkspaceContent() {
       userId: currentUser.id,
       userFullName: currentUser.fullName,
       userRole: currentUser.role,
-      actionCode: 'ACCEPTANCE_ADMIN_REVIEW_STARTED',
-      entityType: 'ACCEPTANCE',
-      entityId: dossier.id,
-      fromStatus: previousStatus,
-      toStatus: 'UNDER_ADMIN_REVIEW',
-      notes:
-        'Phòng NCKH tiếp nhận hồ sơ nghiệm thu và bắt đầu kiểm tra điều kiện.',
+      actionCode: 'RECEIVE_PROPOSAL_REVISION',
+      entityType: 'PROJECT',
+      entityId: project.id,
+      fromStatus: 'PROPOSAL_RESUBMITTED',
+      toStatus: 'UNDER_PROPOSAL_REVISION_REVIEW',
+      notes: 'Phòng NCKH tiếp nhận bản đề cương chỉnh sửa sau kết luận Hội đồng.',
     });
 
-    refresh();
-    setSelectedProject(updated);
-    success('Đã tiếp nhận hồ sơ nghiệm thu.');
+    setDataVersion((value) => value + 1);
+    success('Đã tiếp nhận bản đề cương chỉnh sửa để chuyển bước xét lại.');
   };
 
-  const proposalChecklistPassed = Object.values(
-    proposalChecklist
-  ).every(Boolean);
+  const renderProposalAction = (project: ResearchProject) => {
+    const status = String(project.proposalStatus || '');
 
-  const acceptanceChecklistPassed = Object.values(
-    acceptanceChecklist
-  ).every(Boolean);
-
-  const executeSubmitReview = () => {
-    if (!selectedProject || !reviewAction) return;
-
-    if (activeTab === 'PROPOSAL') {
-      if (
-        selectedProject.proposalStatus !==
-        'UNDER_ADMIN_REVIEW'
-      ) {
-        warning(
-          'Hồ sơ phải được tiếp nhận trước khi kết luận thẩm định.'
-        );
-        return;
-      }
-
-      const nextProposalStatus =
-        reviewAction as ProposalReviewAction;
-
-      if (
-        nextProposalStatus === 'ADMIN_VALIDATED' &&
-        !proposalChecklistPassed
-      ) {
-        warning(
-          'Chưa thể xác nhận hồ sơ hợp lệ vì checklist còn mục chưa đạt.'
-        );
-        return;
-      }
-
-      const updated = repo.updateProject(selectedProject.id, {
-        proposalStatus: nextProposalStatus,
-      });
-
-      if (!updated) {
-        error('Không thể cập nhật kết quả thẩm định.');
-        return;
-      }
-
-      repo.addAuditLog({
-        userId: currentUser.id,
-        userFullName: currentUser.fullName,
-        userRole: currentUser.role,
-        actionCode: `REVIEW_PROPOSAL_${nextProposalStatus}`,
-        entityType: 'PROJECT',
-        entityId: selectedProject.id,
-        fromStatus: 'UNDER_ADMIN_REVIEW',
-        toStatus: nextProposalStatus,
-        notes: reviewComment.trim(),
-      });
-
-      if (nextProposalStatus === 'ADMIN_VALIDATED') {
-        success(
-          'Hồ sơ đăng ký đã hợp lệ. Chủ nhiệm có thể tiếp tục nộp đề cương chi tiết.'
-        );
-      } else if (
-        nextProposalStatus === 'REVISION_REQUIRED'
-      ) {
-        warning(
-          'Đã yêu cầu Chủ nhiệm bổ sung hồ sơ đăng ký.'
-        );
-      } else {
-        warning('Hồ sơ đăng ký đã bị từ chối.');
-      }
-    } else {
-      const dossier = selectedProject.acceptanceDossier;
-
-      if (!dossier) {
-        error('Không tìm thấy hồ sơ nghiệm thu.');
-        return;
-      }
-
-      if (dossier.status !== 'UNDER_ADMIN_REVIEW') {
-        warning(
-          'Hồ sơ phải được tiếp nhận trước khi kết luận thẩm định.'
-        );
-        return;
-      }
-
-      const nextStatus =
-        reviewAction as AcceptanceReviewAction;
-
-      if (
-        nextStatus === 'ELIGIBLE_FOR_ACCEPTANCE' &&
-        !acceptanceChecklistPassed
-      ) {
-        warning(
-          'Chưa thể xác nhận đủ điều kiện vì checklist còn mục chưa đạt.'
-        );
-        return;
-      }
-
-      const updatedDossier: AcceptanceDossier = {
-        ...dossier,
-        status: nextStatus,
-        checklistResults: {
-          ...acceptanceChecklist,
-        },
-      };
-
-      const updated = repo.updateProject(selectedProject.id, {
-        acceptanceDossier: updatedDossier,
-      });
-
-      if (!updated) {
-        error(
-          'Không thể cập nhật kết quả kiểm tra hồ sơ nghiệm thu.'
-        );
-        return;
-      }
-
-      repo.addAuditLog({
-        userId: currentUser.id,
-        userFullName: currentUser.fullName,
-        userRole: currentUser.role,
-        actionCode: `REVIEW_ACCEPTANCE_${nextStatus}`,
-        entityType: 'ACCEPTANCE',
-        entityId: dossier.id,
-        fromStatus: 'UNDER_ADMIN_REVIEW',
-        toStatus: nextStatus,
-        notes: reviewComment.trim(),
-      });
-
-      if (nextStatus === 'ELIGIBLE_FOR_ACCEPTANCE') {
-        success(
-          'Đã xác nhận hồ sơ đủ điều kiện tổ chức nghiệm thu.'
-        );
-      } else {
-        warning(
-          'Đã yêu cầu Chủ nhiệm bổ sung hồ sơ nghiệm thu.'
-        );
-      }
-    }
-
-    refresh();
-    closeReview();
-  };
-
-  const handleSubmitReview = () => {
-    if (!selectedProject || !reviewAction) return;
-
-    if (!reviewComment.trim()) {
-      warning(
-        'Vui lòng nhập ý kiến/kết luận thẩm định.'
+    if (!canReview) {
+      return (
+        <Link href={`/projects/${project.id}`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-700 hover:bg-slate-50">
+          <Eye className="h-3.5 w-3.5" /> Xem hồ sơ
+        </Link>
       );
-      return;
     }
 
-    const actionText =
-      activeTab === 'PROPOSAL'
-        ? reviewAction === 'ADMIN_VALIDATED'
-          ? 'Xác nhận hồ sơ hợp lệ'
-          : reviewAction === 'REVISION_REQUIRED'
-            ? 'Yêu cầu bổ sung hồ sơ'
-            : 'Từ chối hồ sơ'
-        : reviewAction === 'ELIGIBLE_FOR_ACCEPTANCE'
-          ? 'Xác nhận đủ điều kiện nghiệm thu'
-          : 'Yêu cầu bổ sung hồ sơ nghiệm thu';
+    if (status === 'SUBMITTED') {
+      return (
+        <button type="button" onClick={() => setReceiveProject(project)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A6EBD] px-3 py-1.5 font-semibold text-white hover:bg-[#085896]">
+          <CheckCircle2 className="h-3.5 w-3.5" /> Tiếp nhận
+        </button>
+      );
+    }
 
-    confirm({
-      title: 'Xác nhận kết luận thẩm định',
-      message: `Xác nhận "${actionText}" cho hồ sơ ${
-        selectedProject.proposalCode
-      }?`,
-      confirmLabel: 'Xác nhận',
-      type:
-        reviewAction === 'REJECTED'
-          ? 'danger'
-          : reviewAction === 'REVISION_REQUIRED'
-            ? 'warning'
-            : 'info',
-      onConfirm: executeSubmitReview,
-    });
+    if (status === 'UNDER_ADMIN_REVIEW') {
+      return (
+        <button type="button" onClick={() => openReview(project)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A6EBD] px-3 py-1.5 font-semibold text-white hover:bg-[#085896]">
+          <FileCheck2 className="h-3.5 w-3.5" /> Mở kiểm tra
+        </button>
+      );
+    }
+
+    if (status === 'RESUBMITTED') {
+      return (
+        <button type="button" onClick={() => openReview(project)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 font-semibold text-amber-800 hover:bg-amber-100">
+          <RotateCcw className="h-3.5 w-3.5" /> Kiểm tra lại
+        </button>
+      );
+    }
+
+    if (status === 'PROPOSAL_RESUBMITTED') {
+      return (
+        <button type="button" onClick={() => handleReceiveProposalRevision(project)} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-3 py-1.5 font-semibold text-violet-800 hover:bg-violet-100">
+          <CheckCircle2 className="h-3.5 w-3.5" /> Tiếp nhận bản chỉnh sửa
+        </button>
+      );
+    }
+
+    if (status === 'UNDER_PROPOSAL_REVISION_REVIEW') {
+      return (
+        <Link href={`/councils?type=PROPOSAL_REVIEW`} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-white px-3 py-1.5 font-semibold text-violet-800 hover:bg-violet-50">
+          <Eye className="h-3.5 w-3.5" /> Xem bước xét lại
+        </Link>
+      );
+    }
+
+    return (
+      <Link href={`/projects/${project.id}`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-700 hover:bg-slate-50">
+        <Eye className="h-3.5 w-3.5" /> Xem hồ sơ
+      </Link>
+    );
   };
 
-  if (!canReview) {
+  const renderAcceptanceAction = (project: ResearchProject) => {
+    const status = String(project.acceptanceDossier?.status || '');
+    const label =
+      status === 'SUBMITTED'
+        ? 'Tiếp nhận'
+        : status === 'UNDER_ADMIN_REVIEW'
+          ? 'Mở kiểm tra'
+          : status === 'REVISION_REQUIRED'
+            ? 'Xem hồ sơ'
+            : status === 'ELIGIBLE_FOR_ACCEPTANCE'
+              ? 'Xem điều kiện'
+              : 'Xem hồ sơ';
+
     return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
-        <ClipboardCheck className="mx-auto h-8 w-8 text-amber-600" />
-        <h3 className="mt-2 text-sm font-bold text-amber-900">
-          Không có quyền xử lý hồ sơ
-        </h3>
-        <p className="mt-1 text-xs text-amber-700">
-          Workspace thẩm định hành chính dành cho Phòng NCKH.
-        </p>
-      </div>
+      <Link
+        href={`/projects/${project.id}/acceptance`}
+        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-semibold ${
+          ['SUBMITTED', 'UNDER_ADMIN_REVIEW'].includes(status) && canReview
+            ? 'bg-[#0A6EBD] text-white hover:bg-[#085896]'
+            : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+        }`}
+      >
+        <FileCheck2 className="h-3.5 w-3.5" /> {label}
+      </Link>
     );
+  };
+
+  if (!mounted) {
+    return <div className="p-8 text-center text-xs text-slate-500">Đang tải dữ liệu...</div>;
   }
 
+  const counts = activeTab === 'PROPOSALS' ? proposalCounts : acceptanceCounts;
+
   return (
-    <section
-      aria-labelledby="workspace-heading"
-      className="space-y-4 text-slate-800"
-    >
-      <h2 id="workspace-heading" className="sr-only">
-        Thẩm định hồ sơ
-      </h2>
+    <div className="space-y-4 pb-12 text-xs text-slate-800">
+      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 pb-3">
+        <div>
+          <h1 className="text-base font-bold text-slate-900">Kiểm tra hồ sơ</h1>
+          <p className="mt-0.5 text-slate-500">Tiếp nhận và kiểm tra hồ sơ trước khi chuyển sang bước xử lý tiếp theo.</p>
+        </div>
 
-      <div className="flex items-center gap-1 border-b border-slate-200">
-        <TabButton
-          active={activeTab === 'PROPOSAL'}
-          icon={<FileBox className="h-4 w-4" />}
-          label="Hồ sơ đăng ký"
-          count={proposalProjects.length}
-          onClick={() => {
-            setActiveTab('PROPOSAL');
-            setCurrentPage(1);
-            setSelectedStatus('ALL');
-            closeReview();
-          }}
-        />
+        <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('PROPOSALS');
+              setSelectedStatus('ALL');
+              setCurrentPage(1);
+            }}
+            className={`rounded-md px-3 py-1.5 font-semibold ${activeTab === 'PROPOSALS' ? 'bg-white text-[#0A6EBD] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            Hồ sơ đăng ký ({proposalProjects.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('ACCEPTANCE');
+              setSelectedStatus('ALL');
+              setCurrentPage(1);
+            }}
+            className={`rounded-md px-3 py-1.5 font-semibold ${activeTab === 'ACCEPTANCE' ? 'bg-white text-[#0A6EBD] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            Hồ sơ nghiệm thu ({acceptanceProjects.length})
+          </button>
+        </div>
+      </header>
 
-        <TabButton
-          active={activeTab === 'ACCEPTANCE'}
-          icon={<FileText className="h-4 w-4" />}
-          label="Hồ sơ nghiệm thu"
-          count={acceptanceProjects.length}
-          onClick={() => {
-            setActiveTab('ACCEPTANCE');
-            setCurrentPage(1);
-            setSelectedStatus('ALL');
-            closeReview();
-          }}
-        />
-      </div>
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <MetricCard label="Chờ tiếp nhận" value={counts.pending} />
+        <MetricCard label="Đang kiểm tra" value={counts.reviewing} />
+        <MetricCard label="Chờ bổ sung" value={counts.revision} />
+        <MetricCard label={activeTab === 'PROPOSALS' ? 'Hồ sơ hợp lệ' : 'Đủ điều kiện'} value={activeTab === 'PROPOSALS' ? proposalCounts.valid : acceptanceCounts.eligible} />
+      </section>
 
-      <header className="flex flex-wrap items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-4 py-3">
-        <div className="relative w-full max-w-sm">
+      <section className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
+        <div className="relative min-w-[260px] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
-            type="text"
-            placeholder="Tìm mã, tên đề tài, chủ nhiệm..."
             value={search}
             onChange={(event) => {
               setSearch(event.target.value);
               setCurrentPage(1);
             }}
-            className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-8 text-[13px] outline-none focus:border-[#0A6EBD]"
+            placeholder="Tìm mã hồ sơ, tên đề tài, chủ nhiệm..."
+            className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-8 outline-none focus:border-[#0A6EBD]"
           />
-
           {search && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearch('');
-                setCurrentPage(1);
-              }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
-              aria-label="Xóa tìm kiếm"
-            >
+            <button type="button" onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700">
               <X className="h-3.5 w-3.5" />
             </button>
           )}
@@ -661,13 +434,11 @@ function ReviewWorkspaceContent() {
             setSelectedDept(event.target.value);
             setCurrentPage(1);
           }}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-[13px] font-medium text-slate-600 outline-none"
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 font-medium outline-none"
         >
           <option value="ALL">Tất cả Khoa / Phòng</option>
           {departments.map((department) => (
-            <option key={department.id} value={department.id}>
-              {department.name}
-            </option>
+            <option key={department.id} value={department.id}>{department.name}</option>
           ))}
         </select>
 
@@ -677,140 +448,90 @@ function ReviewWorkspaceContent() {
             setSelectedStatus(event.target.value);
             setCurrentPage(1);
           }}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-[13px] font-medium text-slate-600 outline-none"
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 font-medium outline-none"
         >
           <option value="ALL">Tất cả trạng thái</option>
-          <option value="SUBMITTED">Mới nộp</option>
-          <option value="UNDER_ADMIN_REVIEW">
-            Đang kiểm tra
-          </option>
-          <option value="REVISION_REQUIRED">
-            Cần bổ sung
-          </option>
-          <option value="RESUBMITTED">Đã nộp lại</option>
+          {activeTab === 'PROPOSALS' ? (
+            <>
+              <option value="SUBMITTED">Chờ tiếp nhận</option>
+              <option value="UNDER_ADMIN_REVIEW">Đang kiểm tra</option>
+              <option value="REVISION_REQUIRED">Chờ bổ sung</option>
+              <option value="RESUBMITTED">Chờ kiểm tra lại</option>
+              <option value="ADMIN_VALIDATED">Hồ sơ hợp lệ</option>
+              <option value="OUTLINE_SUBMITTED">Chờ xét duyệt đề cương</option>
+              <option value="PROPOSAL_REVISION_REQUIRED">Chờ chỉnh sửa đề cương</option>
+              <option value="PROPOSAL_RESUBMITTED">Chờ tiếp nhận bản chỉnh sửa</option>
+              <option value="UNDER_PROPOSAL_REVISION_REVIEW">Đang xét lại đề cương</option>
+            </>
+          ) : (
+            <>
+              <option value="SUBMITTED">Chờ tiếp nhận</option>
+              <option value="RESUBMITTED">Đã nộp lại</option>
+              <option value="UNDER_ADMIN_REVIEW">Đang kiểm tra</option>
+              <option value="REVISION_REQUIRED">Chờ bổ sung</option>
+              <option value="ELIGIBLE_FOR_ACCEPTANCE">Đủ điều kiện nghiệm thu</option>
+              <option value="FORWARDED_TO_COUNCIL">Đã chuyển Hội đồng</option>
+            </>
+          )}
         </select>
 
-        {hasFilters && (
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedDept('ALL');
-              setSelectedStatus('ALL');
-              setSearch('');
-              setCurrentPage(1);
-            }}
-            className="inline-flex items-center gap-1 rounded-lg border border-rose-100 bg-rose-50 px-2.5 py-1.5 text-[11px] font-bold text-rose-700"
-          >
-            <X className="h-3 w-3" />
-            Xóa bộ lọc
+        {(search || selectedDept !== 'ALL' || selectedStatus !== 'ALL') && (
+          <button type="button" onClick={resetFilters} className="rounded-lg border border-slate-300 bg-white px-3 py-2 font-medium text-slate-600 hover:bg-slate-50">
+            Xóa lọc
           </button>
         )}
+      </section>
 
-        <span className="ml-auto text-xs text-slate-400">
-          <strong className="font-mono text-slate-700">
-            {pendingProjects.length}
-          </strong>{' '}
-          hồ sơ
-        </span>
-      </header>
-
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left text-[13px]">
-            <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-600">
+          <table className="w-full border-collapse text-left">
+            <thead className="bg-[#0B2A63] text-[11px] font-bold uppercase tracking-wide text-white">
               <tr>
                 <th className="w-32 px-4 py-3">Mã hồ sơ</th>
-                <th className="min-w-[300px] px-4 py-3">
-                  Tên đề tài
-                </th>
-                <th className="w-48 px-4 py-3">Chủ nhiệm</th>
-                <th className="w-44 px-4 py-3">Khoa/Phòng</th>
-                <th className="w-40 px-4 py-3 text-center">
-                  Trạng thái
-                </th>
-                <th className="w-32 px-4 py-3 text-center">
-                  Thao tác
-                </th>
+                <th className="min-w-[300px] px-4 py-3">Đề tài</th>
+                <th className="w-44 px-4 py-3">Chủ nhiệm</th>
+                <th className="w-44 px-4 py-3">Khoa / Phòng</th>
+                <th className="w-28 px-4 py-3 text-center">Ngày nộp</th>
+                <th className="w-44 px-4 py-3 text-center">Trạng thái</th>
+                <th className="w-36 px-4 py-3 text-center">Thao tác</th>
               </tr>
             </thead>
-
             <tbody className="divide-y divide-slate-100">
-              {pendingProjects.length === 0 ? (
+              {pagedProjects.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={6}
-                    className="px-4 py-10 text-center text-slate-400"
-                  >
-                    Không có hồ sơ đang chờ xử lý.
-                  </td>
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400">Không có hồ sơ phù hợp.</td>
                 </tr>
               ) : (
                 pagedProjects.map((project) => {
-                  const workflowStatus =
-                    activeTab === 'PROPOSAL'
-                      ? project.proposalStatus
-                      : project.acceptanceDossier?.status;
-
-                  const waitingToReceive =
-                    workflowStatus === 'SUBMITTED' ||
-                    workflowStatus === 'RESUBMITTED';
 
                   return (
-                    <tr
-                      key={project.id}
-                      className="transition hover:bg-slate-50"
-                    >
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/projects/${project.id}`}
-                          className="font-mono text-xs font-bold text-[#0A6EBD] hover:underline"
-                        >
-                          {project.proposalCode}
-                        </Link>
+                    <tr key={project.id} className="hover:bg-slate-50/80">
+                      <td className="px-4 py-3 font-mono font-bold text-[#0A6EBD]">
+                        {project.proposalCode || project.projectCode || '—'}
                       </td>
-
                       <td className="px-4 py-3">
-                        <Link
-                          href={`/projects/${project.id}`}
-                          className="line-clamp-1 font-semibold text-slate-900 hover:text-[#0A6EBD]"
-                        >
+                        <Link href={`/projects/${project.id}`} className="font-semibold text-slate-900 hover:text-[#0A6EBD]">
                           {project.title}
                         </Link>
+                        {project.researchField && <p className="mt-1 text-[11px] text-slate-400">{project.researchField}</p>}
                       </td>
-
-                      <td className="px-4 py-3 text-slate-700">
-                        {project.principalInvestigatorName}
+                      <td className="px-4 py-3 font-medium text-slate-800">{project.principalInvestigatorName}</td>
+                      <td className="px-4 py-3 text-slate-600">{project.departmentName}</td>
+                      <td className="px-4 py-3 text-center font-mono text-[11px] text-slate-500">
+                        {formatDate(activeTab === 'PROPOSALS' ? (project.submittedAt || project.createdAt) : project.updatedAt)}
                       </td>
-
-                      <td className="px-4 py-3 text-slate-600">
-                        {project.departmentName}
-                      </td>
-
                       <td className="px-4 py-3 text-center">
                         <StatusBadge
                           status={
-                            workflowStatus || project.status
+                            activeTab === 'PROPOSALS'
+                              ? project.proposalStatus
+                              : project.acceptanceDossier?.status
                           }
+                          type={activeTab === 'PROPOSALS' ? 'PROPOSAL' : 'ACCEPTANCE'}
                         />
                       </td>
-
                       <td className="px-4 py-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleOpenReview(project)
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
-                        >
-                          {waitingToReceive ? (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-[#0A6EBD]" />
-                          ) : (
-                            <ClipboardCheck className="h-3.5 w-3.5 text-[#0A6EBD]" />
-                          )}
-                          {waitingToReceive
-                            ? 'Tiếp nhận'
-                            : 'Thẩm định'}
-                        </button>
+                        {activeTab === 'PROPOSALS' ? renderProposalAction(project) : renderAcceptanceAction(project)}
                       </td>
                     </tr>
                   );
@@ -819,11 +540,11 @@ function ReviewWorkspaceContent() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       <Pagination
         currentPage={currentPage}
-        totalItems={pendingProjects.length}
+        totalItems={filteredProjects.length}
         pageSize={pageSize}
         onPageChange={setCurrentPage}
         onPageSizeChange={(size) => {
@@ -833,461 +554,140 @@ function ReviewWorkspaceContent() {
         itemLabel="hồ sơ"
       />
 
-      {selectedProject && (
-        <ReviewModal
-          project={selectedProject}
-          activeTab={activeTab}
-          reviewAction={reviewAction}
-          reviewComment={reviewComment}
-          proposalChecklist={proposalChecklist}
-          acceptanceChecklist={acceptanceChecklist}
-          onProposalChecklistChange={setProposalChecklist}
-          onAcceptanceChecklistChange={setAcceptanceChecklist}
-          onReviewActionChange={setReviewAction}
-          onReviewCommentChange={setReviewComment}
-          onClose={closeReview}
-          onReceive={handleReceive}
-          onSubmitReview={handleSubmitReview}
-        />
-      )}
-    </section>
-  );
-}
-
-function ReviewModal({
-  project,
-  activeTab,
-  reviewAction,
-  reviewComment,
-  proposalChecklist,
-  acceptanceChecklist,
-  onProposalChecklistChange,
-  onAcceptanceChecklistChange,
-  onReviewActionChange,
-  onReviewCommentChange,
-  onClose,
-  onReceive,
-  onSubmitReview,
-}: {
-  project: ResearchProject;
-  activeTab: WorkspaceTab;
-  reviewAction: ReviewAction;
-  reviewComment: string;
-  proposalChecklist: ProposalChecklist;
-  acceptanceChecklist: AcceptanceChecklist;
-  onProposalChecklistChange: (
-    value: ProposalChecklist
-  ) => void;
-  onAcceptanceChecklistChange: (
-    value: AcceptanceChecklist
-  ) => void;
-  onReviewActionChange: (value: ReviewAction) => void;
-  onReviewCommentChange: (value: string) => void;
-  onClose: () => void;
-  onReceive: () => void;
-  onSubmitReview: () => void;
-}) {
-  const workflowStatus =
-    activeTab === 'PROPOSAL'
-      ? project.proposalStatus
-      : project.acceptanceDossier?.status;
-
-  const waitingToReceive =
-    workflowStatus === 'SUBMITTED' ||
-    workflowStatus === 'RESUBMITTED';
-
-  const underReview =
-    workflowStatus === 'UNDER_ADMIN_REVIEW';
-
-  const documents =
-    activeTab === 'PROPOSAL'
-      ? project.documents.filter((document) =>
-          [
-            'PROPOSAL_FORM',
-            'DETAILED_OUTLINE',
-            'BUDGET_ESTIMATE',
-            'CV',
-          ].includes(document.documentType)
-        )
-      : project.documents.filter((document) =>
-          [
-            'FINAL_REPORT',
-            'PRODUCT_EVIDENCE',
-            'PUBLICATION',
-            'FINANCIAL_SETTLEMENT',
-          ].includes(document.documentType)
-        );
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
-      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl">
-        <header className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-xs font-bold text-[#0A6EBD]">
-                {project.proposalCode}
-              </span>
-              <StatusBadge
-                status={workflowStatus || project.status}
-              />
+      {receiveProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-slate-900">Tiếp nhận hồ sơ</h3>
+              <button type="button" onClick={() => setReceiveProject(null)} className="text-slate-400 hover:text-slate-700">✕</button>
             </div>
-            <h3 className="mt-1 text-sm font-bold text-slate-900">
-              {project.title}
-            </h3>
+
+            <div className="space-y-3 py-4">
+              <div>
+                <p className="font-mono text-xs font-bold text-[#0A6EBD]">{receiveProject.proposalCode}</p>
+                <p className="mt-1 font-semibold leading-snug text-slate-900">{receiveProject.title}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-3 text-[11px]">
+                <div><span className="block text-slate-400">Chủ nhiệm</span><strong className="text-slate-700">{receiveProject.principalInvestigatorName}</strong></div>
+                <div><span className="block text-slate-400">Ngày nộp</span><strong className="text-slate-700">{formatDate(receiveProject.submittedAt || receiveProject.createdAt)}</strong></div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+              <button type="button" onClick={() => setReceiveProject(null)} className="rounded-lg border border-slate-300 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50">Hủy</button>
+              <button type="button" onClick={handleReceive} className="rounded-lg bg-[#0A6EBD] px-4 py-2 font-semibold text-white hover:bg-[#085896]">Xác nhận tiếp nhận</button>
+            </div>
           </div>
+        </div>
+      )}
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-700"
-            aria-label="Đóng"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </header>
-
-        <div className="space-y-5 p-5 text-xs">
-          <section>
-            <h4 className="mb-2 font-bold text-slate-800">
-              Tài liệu hồ sơ
-            </h4>
-
-            {documents.length === 0 ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-700">
-                Chưa có tài liệu phù hợp với giai đoạn này.
+      {reviewProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Kiểm tra hồ sơ</h3>
+                <p className="mt-0.5 font-mono text-[11px] font-semibold text-[#0A6EBD]">{reviewProject.proposalCode}</p>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {documents.map((document) => {
-                  const currentVersion =
-                    document.versions.find(
-                      (version) => version.isCurrent
-                    ) || document.versions[0];
+              <button type="button" onClick={() => setReviewProject(null)} className="text-slate-400 hover:text-slate-700">✕</button>
+            </div>
 
-                  return (
-                    <div
-                      key={document.id}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold text-slate-800">
-                          {document.title}
-                        </p>
-                        <p className="mt-0.5 text-[10px] text-slate-400">
-                          Phiên bản {document.currentVersion}
-                        </p>
+            <div className="flex-1 space-y-5 overflow-y-auto p-5">
+              <section>
+                <h4 className="mb-2 font-bold text-slate-900">Tài liệu đã nộp</h4>
+                <div className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+                  {(reviewProject.documents || []).length === 0 ? (
+                    <div className="px-3 py-4 text-slate-400">Chưa có tài liệu điện tử.</div>
+                  ) : (
+                    reviewProject.documents.map((doc) => (
+                      <div key={doc.id} className="flex items-center justify-between px-3 py-2.5">
+                        <span className="font-medium text-slate-700">{doc.title}</span>
+                        <span className="text-[11px] font-semibold text-emerald-700">Đã nộp</span>
                       </div>
-
-                      {currentVersion?.downloadUrl &&
-                      currentVersion.downloadUrl !== '#' ? (
-                        <a
-                          href={currentVersion.downloadUrl}
-                          className="inline-flex shrink-0 items-center gap-1 font-semibold text-[#0A6EBD] hover:underline"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          Xem
-                        </a>
-                      ) : (
-                        <span className="shrink-0 text-[10px] text-slate-400">
-                          Chưa có tệp
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          {waitingToReceive && (
-            <section className="rounded-xl border border-sky-200 bg-sky-50 p-4">
-              <h4 className="font-bold text-sky-900">
-                Hồ sơ đang chờ tiếp nhận
-              </h4>
-              <p className="mt-1 leading-relaxed text-sky-700">
-                Tiếp nhận hồ sơ để bắt đầu bước kiểm tra hành chính.
-                Chưa kết luận đạt/không đạt ở bước này.
-              </p>
-
-              <button
-                type="button"
-                onClick={onReceive}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#0A6EBD] px-3.5 py-2 font-bold text-white hover:bg-[#085896]"
-              >
-                <Check className="h-4 w-4" />
-                Tiếp nhận hồ sơ
-              </button>
-            </section>
-          )}
-
-          {underReview && (
-            <>
-              <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <h4 className="mb-3 font-bold uppercase tracking-wide text-slate-700">
-                  Checklist kiểm tra
-                </h4>
-
-                <div className="space-y-2.5">
-                  {activeTab === 'PROPOSAL'
-                    ? PROPOSAL_CHECKLIST_ITEMS.map(
-                        (item) => (
-                          <ChecklistRow
-                            key={item.key}
-                            label={item.label}
-                            checked={
-                              proposalChecklist[item.key]
-                            }
-                            onChange={(checked) =>
-                              onProposalChecklistChange({
-                                ...proposalChecklist,
-                                [item.key]: checked,
-                              })
-                            }
-                          />
-                        )
-                      )
-                    : ACCEPTANCE_CHECKLIST_ITEMS.map(
-                        (item) => (
-                          <ChecklistRow
-                            key={item.key}
-                            label={item.label}
-                            checked={
-                              acceptanceChecklist[item.key]
-                            }
-                            onChange={(checked) =>
-                              onAcceptanceChecklistChange({
-                                ...acceptanceChecklist,
-                                [item.key]: checked,
-                              })
-                            }
-                          />
-                        )
-                      )}
-                </div>
-              </section>
-
-              <section className="space-y-3 border-t border-slate-100 pt-4">
-                <h4 className="font-bold text-slate-800">
-                  Kết luận thẩm định
-                </h4>
-
-                <div
-                  className={`grid gap-2 ${
-                    activeTab === 'PROPOSAL'
-                      ? 'grid-cols-1 sm:grid-cols-3'
-                      : 'grid-cols-1 sm:grid-cols-2'
-                  }`}
-                >
-                  <ActionChoice
-                    active={
-                      reviewAction ===
-                      (activeTab === 'PROPOSAL'
-                        ? 'ADMIN_VALIDATED'
-                        : 'ELIGIBLE_FOR_ACCEPTANCE')
-                    }
-                    icon={
-                      <CheckCircle2 className="h-5 w-5" />
-                    }
-                    label={
-                      activeTab === 'PROPOSAL'
-                        ? 'Hồ sơ hợp lệ'
-                        : 'Đủ điều kiện nghiệm thu'
-                    }
-                    tone="green"
-                    onClick={() =>
-                      onReviewActionChange(
-                        activeTab === 'PROPOSAL'
-                          ? 'ADMIN_VALIDATED'
-                          : 'ELIGIBLE_FOR_ACCEPTANCE'
-                      )
-                    }
-                  />
-
-                  <ActionChoice
-                    active={
-                      reviewAction === 'REVISION_REQUIRED'
-                    }
-                    icon={
-                      <RotateCcw className="h-5 w-5" />
-                    }
-                    label="Yêu cầu bổ sung"
-                    tone="amber"
-                    onClick={() =>
-                      onReviewActionChange(
-                        'REVISION_REQUIRED'
-                      )
-                    }
-                  />
-
-                  {activeTab === 'PROPOSAL' && (
-                    <ActionChoice
-                      active={reviewAction === 'REJECTED'}
-                      icon={
-                        <XCircle className="h-5 w-5" />
-                      }
-                      label="Từ chối"
-                      tone="rose"
-                      onClick={() =>
-                        onReviewActionChange('REJECTED')
-                      }
-                    />
+                    ))
                   )}
                 </div>
+              </section>
 
-                <div>
-                  <label className="mb-1 block font-semibold text-slate-700">
-                    Ý kiến thẩm định
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={reviewComment}
-                    onChange={(event) =>
-                      onReviewCommentChange(event.target.value)
-                    }
-                    placeholder="Nêu rõ kết quả kiểm tra và nội dung cần bổ sung nếu có..."
-                    className="w-full resize-none rounded-lg border border-slate-300 p-2.5 outline-none focus:border-[#0A6EBD]"
-                  />
+              <section>
+                <h4 className="mb-2 font-bold text-slate-900">Nội dung kiểm tra</h4>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {[
+                    ['investigator', 'Thông tin Chủ nhiệm và thành viên'],
+                    ['department', 'Thông tin Khoa / Phòng'],
+                    ['forms', 'Biểu mẫu và trường bắt buộc'],
+                    ['signatures', 'Chữ ký / xác nhận'],
+                    ['outline', 'Thuyết minh và tài liệu bắt buộc'],
+                    ['budget', 'Dự toán kinh phí (nếu áp dụng)'],
+                  ].map(([key, label]) => (
+                    <label key={key} className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 p-3 hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={checklist[key as keyof typeof checklist]}
+                        onChange={(event) => setChecklist((current) => ({ ...current, [key]: event.target.checked }))}
+                        className="mt-0.5"
+                      />
+                      <span className="font-medium text-slate-700">{label}</span>
+                    </label>
+                  ))}
                 </div>
               </section>
-            </>
-          )}
 
-          {workflowStatus === 'REVISION_REQUIRED' && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-700">
-              Hồ sơ đang chờ Chủ nhiệm bổ sung và nộp lại.
+              <section>
+                <h4 className="mb-2 font-bold text-slate-900">Kết quả xử lý</h4>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <DecisionOption active={decision === 'ADMIN_VALIDATED'} label="Hồ sơ hợp lệ" onClick={() => setDecision('ADMIN_VALIDATED')} />
+                  <DecisionOption active={decision === 'REVISION_REQUIRED'} label="Yêu cầu bổ sung" onClick={() => setDecision('REVISION_REQUIRED')} />
+                  <DecisionOption active={decision === 'REJECTED'} label="Không đủ điều kiện" onClick={() => setDecision('REJECTED')} />
+                </div>
+              </section>
+
+              <section>
+                <label className="mb-1.5 block font-bold text-slate-700">
+                  {decision === 'REVISION_REQUIRED' ? 'Nội dung yêu cầu bổ sung' : decision === 'REJECTED' ? 'Lý do không đủ điều kiện' : 'Ghi chú'}
+                  {decision !== 'ADMIN_VALIDATED' && <span className="text-rose-500"> *</span>}
+                </label>
+                <textarea
+                  rows={4}
+                  value={comment}
+                  onChange={(event) => setComment(event.target.value)}
+                  className="w-full resize-none rounded-lg border border-slate-300 p-3 outline-none focus:border-[#0A6EBD]"
+                />
+              </section>
             </div>
-          )}
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3">
+              <button type="button" onClick={() => setReviewProject(null)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 hover:bg-slate-100">Hủy</button>
+              <button type="button" onClick={handleSubmitReview} className="rounded-lg bg-[#0A6EBD] px-4 py-2 font-semibold text-white hover:bg-[#085896]">Hoàn tất kiểm tra</button>
+            </div>
+          </div>
         </div>
-
-        <footer className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700"
-          >
-            Đóng
-          </button>
-
-          {underReview && (
-            <button
-              type="button"
-              disabled={!reviewAction}
-              onClick={onSubmitReview}
-              className="rounded-lg bg-[#0A6EBD] px-4 py-2 font-bold text-white hover:bg-[#085896] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Xác nhận kết luận
-            </button>
-          )}
-        </footer>
-      </div>
+      )}
     </div>
   );
 }
 
-function ChecklistRow({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
+function MetricCard({ label, value }: { label: string; value: number }) {
   return (
-    <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-slate-200 bg-white p-2.5 text-slate-700">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) =>
-          onChange(event.target.checked)
-        }
-        className="mt-0.5 h-4 w-4 accent-[#0A6EBD]"
-      />
-      <span className="leading-relaxed">{label}</span>
-    </label>
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-2xs">
+      <span className="text-[11px] font-medium text-slate-500">{label}</span>
+      <strong className="mt-1 block font-mono text-lg font-bold text-slate-900">{value}</strong>
+    </div>
   );
 }
 
-function ActionChoice({
-  active,
-  icon,
-  label,
-  tone,
-  onClick,
-}: {
-  active: boolean;
-  icon: React.ReactNode;
-  label: string;
-  tone: 'green' | 'amber' | 'rose';
-  onClick: () => void;
-}) {
-  const activeClass = {
-    green:
-      'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-500/20',
-    amber:
-      'border-amber-500 bg-amber-50 text-amber-800 ring-2 ring-amber-500/20',
-    rose:
-      'border-rose-500 bg-rose-50 text-rose-800 ring-2 ring-rose-500/20',
-  }[tone];
-
+function DecisionOption({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center justify-center gap-2 rounded-lg border p-3 font-bold transition ${
+      className={`rounded-lg border px-3 py-2.5 text-left font-semibold transition ${
         active
-          ? activeClass
-          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+          ? 'border-[#0A6EBD] bg-sky-50 text-[#0A6EBD]'
+          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
       }`}
     >
-      {icon}
       {label}
     </button>
-  );
-}
-
-function TabButton({
-  active,
-  icon,
-  label,
-  count,
-  onClick,
-}: {
-  active: boolean;
-  icon: React.ReactNode;
-  label: string;
-  count: number;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-bold transition ${
-        active
-          ? 'border-[#0A6EBD] text-[#0A6EBD]'
-          : 'border-transparent text-slate-500 hover:text-slate-800'
-      }`}
-    >
-      {icon}
-      {label}
-      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">
-        {count}
-      </span>
-    </button>
-  );
-}
-
-export default function ReviewWorkspacePage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="p-8 text-center text-slate-500">
-          Đang tải không gian thẩm định...
-        </div>
-      }
-    >
-      <ReviewWorkspaceContent />
-    </Suspense>
   );
 }

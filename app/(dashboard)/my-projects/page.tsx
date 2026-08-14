@@ -4,43 +4,34 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  AlertCircle,
-  Award,
-  Calendar,
   Edit,
   Eye,
   FileText,
   Filter,
   GitPullRequest,
-  History as HistoryIcon,
   LayoutGrid,
   List,
-  MoreVertical,
+  MoreHorizontal,
   Plus,
+  Printer,
   Search,
-  Shield,
   Trash2,
+  TrendingUp,
   Upload,
+  X,
 } from 'lucide-react';
 
 import { repo } from '@/lib/repository';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/Toast';
-import { formatDate } from '@/lib/utils';
 import { Pagination } from '@/components/ui/Pagination';
-import { ResearchProject } from '@/lib/types';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { formatDate } from '@/lib/utils';
+import type { ResearchProject } from '@/lib/types';
 import {
   SubmitOutlineModal,
   type SubmitOutlinePayload,
-} from './SubmitProposalModal';
-
-interface ActionItem {
-  label: string;
-  href?: string;
-  icon: React.ElementType;
-  isDestructive?: boolean;
-  onClick?: () => void;
-}
+} from './SubmitOutlineModal';
 
 type ActiveTab =
   | 'all'
@@ -49,14 +40,341 @@ type ActiveTab =
   | 'in_progress'
   | 'completed';
 
+type ViewMode = 'table' | 'grid';
 type SortBy = 'NEWEST' | 'DEADLINE';
+
+type ProjectRow = ResearchProject & {
+  displayCode: string;
+  roundLabel: string;
+  displayStatus: string;
+  displayStatusType: 'PROJECT' | 'PROPOSAL';
+  isActionNeeded: boolean;
+  nextStepText: string;
+  registrationDate: string;
+  executionPeriod: string;
+};
+
+function monthToStartDate(month: string) {
+  return `${month}-01`;
+}
+
+function monthToEndDate(month: string) {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const lastDay = new Date(year, monthNumber, 0).getDate();
+  return `${month}-${String(lastDay).padStart(2, '0')}`;
+}
+
+function getDisplayStatus(project: ResearchProject) {
+  const isProposalStage =
+    project.status === 'DRAFT' || project.status === 'SUBMITTED';
+
+  return {
+    status: isProposalStage ? project.proposalStatus : project.status,
+    type: isProposalStage ? ('PROPOSAL' as const) : ('PROJECT' as const),
+  };
+}
+
+function getNextStepText(project: ResearchProject, isPI: boolean): string {
+  if (!isPI) return 'Theo dõi và phối hợp thực hiện';
+
+  if (project.status === 'DRAFT' && project.proposalStatus === 'DRAFT') {
+    return 'Hoàn thiện hồ sơ đăng ký';
+  }
+
+  switch (project.proposalStatus) {
+    case 'SUBMITTED':
+      return 'Chờ Phòng NCKH tiếp nhận';
+    case 'UNDER_ADMIN_REVIEW':
+      return 'Phòng NCKH đang kiểm tra hồ sơ';
+    case 'REVISION_REQUIRED':
+      return 'Bổ sung hồ sơ theo yêu cầu';
+    case 'RESUBMITTED':
+      return 'Chờ kiểm tra lại hồ sơ';
+    case 'ADMIN_VALIDATED':
+      return 'Đính kèm và nộp đề cương';
+    case 'OUTLINE_SUBMITTED':
+      return 'Chờ tổ chức xét duyệt đề cương';
+    case 'UNDER_PROPOSAL_REVIEW':
+      return 'Hội đồng đang xét duyệt đề cương';
+    case 'PROPOSAL_REVISION_REQUIRED':
+      return 'Chỉnh sửa đề cương theo kết luận Hội đồng';
+    case 'PROPOSAL_RESUBMITTED':
+      return 'Chờ tiếp nhận bản đề cương chỉnh sửa';
+    case 'UNDER_PROPOSAL_REVISION_REVIEW':
+      return 'Đang xét lại đề cương';
+    case 'PROPOSAL_APPROVED':
+      break;
+  }
+
+  if (project.ethicsStatus === 'ETHICS_REVISION_REQUIRED') {
+    return 'Bổ sung hồ sơ đạo đức';
+  }
+
+  switch (project.status) {
+    case 'WAITING_ASSIGNMENT':
+      return 'Chờ quyết định giao thực hiện';
+    case 'IN_PROGRESS':
+      return project.acceptanceDossier
+        ? 'Tiếp tục thực hiện và báo cáo tiến độ'
+        : 'Thực hiện đề tài; có thể lập hồ sơ nghiệm thu khi đủ điều kiện';
+    case 'WAITING_ACCEPTANCE':
+      if (project.acceptanceDossier?.status === 'REVISION_REQUIRED') {
+        return 'Bổ sung hồ sơ nghiệm thu';
+      }
+      if (project.acceptanceDossier?.status === 'FORWARDED_TO_COUNCIL') {
+        return 'Chờ Hội đồng nghiệm thu';
+      }
+      return 'Theo dõi xử lý hồ sơ nghiệm thu';
+    case 'ACCEPTED':
+      return 'Chờ quyết định công nhận kết quả';
+    case 'RECOGNIZED':
+      return 'Kết quả đã được công nhận';
+    case 'CLOSED':
+      return 'Hồ sơ đã đóng';
+    case 'ARCHIVED':
+      return 'Hồ sơ đã lưu trữ';
+    case 'SUSPENDED':
+      return 'Đề tài đang tạm dừng';
+    case 'TERMINATED':
+      return 'Đề tài đã chấm dứt';
+    case 'REJECTED':
+      return 'Đề tài không được tiếp tục';
+    default:
+      return 'Theo dõi tiến trình xử lý';
+  }
+}
+
+function isActionRequired(project: ResearchProject, isPI: boolean): boolean {
+  if (!isPI) return false;
+
+  if (project.status === 'DRAFT' && project.proposalStatus === 'DRAFT') {
+    return true;
+  }
+
+  if (
+    project.proposalStatus === 'REVISION_REQUIRED' ||
+    project.proposalStatus === 'ADMIN_VALIDATED' ||
+    project.proposalStatus === 'PROPOSAL_REVISION_REQUIRED' ||
+    project.ethicsStatus === 'ETHICS_REVISION_REQUIRED'
+  ) {
+    return true;
+  }
+
+  if (
+    project.status === 'WAITING_ACCEPTANCE' &&
+    project.acceptanceDossier?.status === 'REVISION_REQUIRED'
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function PrimaryAction({
+  project,
+  isPI,
+  onUploadOutline,
+}: {
+  project: ResearchProject;
+  isPI: boolean;
+  onUploadOutline: () => void;
+}) {
+  if (!isPI) return null;
+
+  if (project.status === 'DRAFT' && project.proposalStatus === 'DRAFT') {
+    return (
+      <Link
+        href={`/projects/register?draftId=${project.id}`}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-[#0A6EBD] transition hover:bg-sky-100"
+        title="Chỉnh sửa hồ sơ"
+        aria-label="Chỉnh sửa hồ sơ"
+      >
+        <Edit className="h-4 w-4" />
+      </Link>
+    );
+  }
+
+  if (project.proposalStatus === 'REVISION_REQUIRED') {
+    return (
+      <Link
+        href={`/projects/${project.id}/resubmit`}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 transition hover:bg-rose-100"
+        title="Bổ sung hồ sơ"
+        aria-label="Bổ sung hồ sơ"
+      >
+        <Edit className="h-4 w-4" />
+      </Link>
+    );
+  }
+
+  if (project.proposalStatus === 'ADMIN_VALIDATED') {
+    return (
+      <button
+        type="button"
+        onClick={onUploadOutline}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-[#0A6EBD] transition hover:bg-sky-100"
+        title="Đính kèm / nộp đề cương"
+        aria-label="Đính kèm / nộp đề cương"
+      >
+        <Upload className="h-4 w-4" />
+      </button>
+    );
+  }
+
+  if (project.proposalStatus === 'PROPOSAL_REVISION_REQUIRED') {
+    return (
+      <Link
+        href={`/projects/${project.id}/resubmit`}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 transition hover:bg-amber-100"
+        title="Chỉnh sửa đề cương theo Hội đồng"
+        aria-label="Chỉnh sửa đề cương theo Hội đồng"
+      >
+        <Edit className="h-4 w-4" />
+      </Link>
+    );
+  }
+
+  if (project.ethicsStatus === 'ETHICS_REVISION_REQUIRED') {
+    return (
+      <Link
+        href={`/projects/${project.id}/ethics`}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 transition hover:bg-amber-100"
+        title="Bổ sung hồ sơ đạo đức"
+        aria-label="Bổ sung hồ sơ đạo đức"
+      >
+        <FileText className="h-4 w-4" />
+      </Link>
+    );
+  }
+
+  if (
+    project.status === 'WAITING_ACCEPTANCE' &&
+    project.acceptanceDossier?.status === 'REVISION_REQUIRED'
+  ) {
+    return (
+      <Link
+        href={`/projects/${project.id}/acceptance`}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 transition hover:bg-rose-100"
+        title="Bổ sung hồ sơ nghiệm thu"
+        aria-label="Bổ sung hồ sơ nghiệm thu"
+      >
+        <Edit className="h-4 w-4" />
+      </Link>
+    );
+  }
+
+  if (project.status === 'IN_PROGRESS') {
+    return (
+      <Link
+        href={`/projects/${project.id}/progress`}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100"
+        title="Báo cáo tiến độ"
+        aria-label="Báo cáo tiến độ"
+      >
+        <TrendingUp className="h-4 w-4" />
+      </Link>
+    );
+  }
+
+  return null;
+}
+
+function MoreActions({
+  project,
+  isPI,
+  isOpen,
+  onToggle,
+  onClose,
+  onDelete,
+}: {
+  project: ResearchProject;
+  isPI: boolean;
+  isOpen: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
+        title="Thao tác khác"
+        aria-label="Thao tác khác"
+      >
+        <MoreHorizontal className="h-4 w-4" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 top-9 z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 text-left shadow-xl">
+          <Link
+            href={`/projects/${project.id}`}
+            onClick={onClose}
+            className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <Eye className="h-4 w-4 text-slate-400" />
+            Xem chi tiết hồ sơ
+          </Link>
+
+          {isPI && ['IN_PROGRESS', 'SUSPENDED'].includes(project.status) && (
+            <Link
+              href={`/projects/${project.id}/change-requests`}
+              onClick={onClose}
+              className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <GitPullRequest className="h-4 w-4 text-slate-400" />
+              Gia hạn / Điều chỉnh
+            </Link>
+          )}
+
+          {isPI &&
+            project.status === 'IN_PROGRESS' &&
+            (!project.acceptanceDossier ||
+              project.acceptanceDossier.status === 'NOT_SUBMITTED' ||
+              project.acceptanceDossier.status === 'DRAFT') && (
+              <Link
+                href={`/projects/${project.id}/acceptance`}
+                onClick={onClose}
+                className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                <FileText className="h-4 w-4 text-slate-400" />
+                {project.acceptanceDossier?.status === 'DRAFT'
+                  ? 'Tiếp tục hồ sơ nghiệm thu'
+                  : 'Lập hồ sơ nghiệm thu'}
+              </Link>
+            )}
+
+          {isPI &&
+            project.status === 'DRAFT' &&
+            project.proposalStatus === 'DRAFT' && (
+              <>
+                <div className="my-1 border-t border-slate-100" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onDelete();
+                  }}
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Xóa bản nháp
+                </button>
+              </>
+            )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function MyProjectsPage() {
   const router = useRouter();
   const { currentUser } = useAuth();
-  const { success, error } = useToast();
+  const { success, error, confirm } = useToast();
 
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [activeTab, setActiveTab] = useState<ActiveTab>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRound, setSelectedRound] = useState('ALL');
@@ -64,511 +382,154 @@ export default function MyProjectsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [dataVersion, setDataVersion] = useState(0);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [outlineProject, setOutlineProject] = useState<ResearchProject | null>(
+    null
+  );
 
-  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-  const [outlineSubmissionProject, setOutlineSubmissionProject] =
-    useState<ResearchProject | null>(null);
-  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    const closeMenu = (event: MouseEvent) => {
       if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node)
       ) {
-        setOpenDropdownId(null);
+        setOpenMenuId(null);
       }
-    }
+    };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mousedown', closeMenu);
+    return () => document.removeEventListener('mousedown', closeMenu);
   }, []);
 
-  const rounds = repo.getRounds();
+  const rounds = useMemo(() => repo.getRounds(), [dataVersion]);
 
-  const rawProjects = useMemo(() => {
-    const list = repo.getProjects();
+  const rawProjects = useMemo(
+    () =>
+      repo.getProjects().filter(
+        (project) =>
+          project.principalInvestigatorId === currentUser.id ||
+          project.members?.some(
+            (member) => member.userId === currentUser.id
+          )
+      ),
+    [currentUser.id, dataVersion]
+  );
 
-    // Đây là "Đề tài của tôi": luôn lọc theo quan hệ của user với đề tài.
-    // Không mặc định ADMIN/DIRECTOR/RESEARCH_OFFICE nhìn toàn bộ tại màn này.
-    return list.filter(
-      (p) =>
-        p.principalInvestigatorId === currentUser.id ||
-        p.members.some((member) => member.userId === currentUser.id)
-    );
-  }, [currentUser.id, dataVersion]);
+  const rows = useMemo<ProjectRow[]>(() => {
+    return rawProjects.map((project) => {
+      const isPI =
+        currentUser.role === 'RESEARCHER' &&
+        project.principalInvestigatorId === currentUser.id;
 
-  const handleDeleteDraft = (id: string) => {
-    const project = repo.getProjects().find((p) => p.id === id);
+      const { status, type } = getDisplayStatus(project);
 
-    if (
-      !project ||
-      project.status !== 'DRAFT' ||
-      project.proposalStatus !== 'DRAFT'
-    ) {
-      error('Chỉ được xóa hồ sơ đăng ký chưa nộp.');
-      return;
-    }
+      let roundLabel = project.registrationRoundName || '—';
+      roundLabel = roundLabel
+        .replace(/Đợt đăng ký Đề tài NCKH Cấp cơ sở\s*/gi, '')
+        .replace(/Kế hoạch đăng ký đề tài NCKH\s*/gi, '')
+        .trim();
 
-    // Nếu dự án đã có cơ chế ConfirmationDialog dùng chung,
-    // thay confirm() tại đây bằng dialog đó.
-    const confirmed = window.confirm(
-      'Xóa bản nháp này? Hành động này không thể hoàn tác.'
-    );
+      const registrationDate = formatDate(
+        project.submittedAt || project.createdAt
+      );
 
-    if (!confirmed) return;
-
-    const isSuccess = repo.deleteProject(id);
-
-    if (!isSuccess) {
-      error('Không thể xóa bản nháp.');
-      return;
-    }
-
-    success('Đã xóa bản nháp.');
-    setDataVersion((value) => value + 1);
-  };
-
-  const handleSubmitOutline = async (payload: SubmitOutlinePayload) => {
-    const project = repo
-      .getProjects()
-      .find((item) => item.id === payload.projectId);
-
-    if (!project) {
-      throw new Error('PROJECT_NOT_FOUND');
-    }
-
-    if (project.proposalStatus !== 'ADMIN_VALIDATED') {
-      throw new Error('INVALID_PROPOSAL_STATE');
-    }
-
-    /*
-     * TODO khi repository có Document Service:
-     * 1. Upload payload.file.
-     * 2. Tạo/cập nhật ProjectDocument với documentType = DETAILED_OUTLINE.
-     * 3. Tạo DocumentVersion mới, không ghi đè phiên bản cũ.
-     * 4. Chỉ sau khi upload thành công mới transition proposalStatus.
-     *
-     * Hiện repository được cung cấp chưa có API upload file trong đoạn mã nguồn
-     * đã xác minh, vì vậy không giả lập một method không tồn tại.
-     */
-
-    repo.updateProject(payload.projectId, {
-      proposalStatus: 'OUTLINE_SUBMITTED',
-      updatedAt: new Date().toISOString(),
-    });
-
-    repo.addAuditLog({
-      userId: currentUser.id,
-      userFullName: currentUser.fullName,
-      userRole: currentUser.role,
-      entityType: 'PROJECT',
-      entityId: payload.projectId,
-      actionCode: 'OUTLINE_SUBMITTED',
-      notes: `Nộp đề cương chi tiết: ${payload.file.name}; thời gian dự kiến ${payload.fromMonth} - ${payload.toMonth}`,
-    });
-
-    success(
-      'Đã nộp đề cương. Hồ sơ đang chờ Phòng NCKH tiếp nhận và chuyển xét duyệt đề cương.'
-    );
-
-    setDataVersion((value) => value + 1);
-    router.refresh();
-  };
-
-  const myProjects = useMemo(() => {
-    return rawProjects.map((p) => {
-      let statusText = 'Đang xử lý';
-      let statusColor = 'bg-slate-100 text-slate-700 border-slate-200';
-      let isActionNeeded = false;
-
-      let primaryAction: ActionItem = {
-        label: 'Xem chi tiết',
-        href: `/projects/${p.id}`,
-        icon: Eye,
-      };
-      let secondaryActions: ActionItem[] = [
-        {
-          label: 'Xem tài liệu',
-          href: `/projects/${p.id}?tab=DOCUMENTS`,
-          icon: FileText,
-        },
-        {
-          label: 'Lịch sử xử lý',
-          href: `/projects/${p.id}?tab=HISTORY`,
-          icon: HistoryIcon,
-        },
-      ];
-
-      if (p.status === 'DRAFT') {
-        statusText = 'Bản nháp';
-        isActionNeeded = true;
-        primaryAction = {
-          label: 'Tiếp tục chỉnh sửa',
-          href: `/projects/register?draftId=${p.id}`,
-          icon: Edit,
-        };
-        secondaryActions = [
-          {
-            label: 'Xem chi tiết',
-            href: `/projects/${p.id}`,
-            icon: Eye,
-          },
-          {
-            label: 'Xóa bản nháp',
-            icon: Trash2,
-            isDestructive: true,
-            onClick: () => handleDeleteDraft(p.id),
-          },
-        ];
-      } else if (
-        p.proposalStatus === 'SUBMITTED' ||
-        p.proposalStatus === 'UNDER_ADMIN_REVIEW' ||
-        p.proposalStatus === 'RESUBMITTED'
-      ) {
-        statusText = 'Chờ kiểm tra hồ sơ';
-        statusColor = 'bg-amber-50 text-amber-800 border-amber-200';
-        primaryAction = {
-          label: 'Xem hồ sơ',
-          href: `/projects/${p.id}`,
-          icon: Eye,
-        };
-      } else if (p.proposalStatus === 'REVISION_REQUIRED') {
-        statusText = 'Cần bổ sung';
-        statusColor = 'bg-rose-50 text-rose-800 border-rose-200';
-        isActionNeeded = true;
-        primaryAction = {
-          label: 'Bổ sung hồ sơ',
-          href: `/projects/${p.id}/resubmit`,
-          icon: Edit,
-        };
-        secondaryActions = [
-          {
-            label: 'Xem yêu cầu bổ sung',
-            href: `/projects/${p.id}?tab=HISTORY`,
-            icon: AlertCircle,
-          },
-          {
-            label: 'Xem các phiên bản',
-            href: `/projects/${p.id}?tab=DOCUMENTS`,
-            icon: HistoryIcon,
-          },
-        ];
-      } else if (p.proposalStatus === 'ADMIN_VALIDATED') {
-        statusText = 'Chờ nộp đề cương';
-        statusColor = 'bg-sky-50 text-[#0A6EBD] border-sky-200';
-        isActionNeeded = true;
-        primaryAction = {
-          label: 'Nộp đề cương',
-          icon: Upload,
-          onClick: () => setOutlineSubmissionProject(p),
-        };
-        secondaryActions = [
-          {
-            label: 'Xem hồ sơ đã duyệt',
-            href: `/projects/${p.id}`,
-            icon: Eye,
-          },
-          {
-            label: 'Xem tài liệu',
-            href: `/projects/${p.id}?tab=DOCUMENTS`,
-            icon: FileText,
-          },
-        ];
-      } else if (
-        p.proposalStatus === 'OUTLINE_SUBMITTED' ||
-        p.proposalStatus === 'UNDER_PROPOSAL_REVIEW'
-      ) {
-        statusText = 'Chờ HĐ xét duyệt';
-        statusColor = 'bg-sky-50 text-[#0A6EBD] border-sky-200';
-        primaryAction = {
-          label: 'Xem chi tiết',
-          href: `/projects/${p.id}`,
-          icon: Eye,
-        };
-        secondaryActions = [
-          {
-            label: 'Đề cương đã nộp',
-            href: `/projects/${p.id}?tab=DOCUMENTS`,
-            icon: FileText,
-          },
-          {
-            label: 'Lịch Hội đồng',
-            href: `/projects/${p.id}?tab=COUNCIL`,
-            icon: Calendar,
-          },
-        ];
-      } else if (p.proposalStatus === 'PROPOSAL_REVISION_REQUIRED') {
-        statusText = 'Cần hoàn thiện theo HĐ';
-        statusColor = 'bg-rose-50 text-rose-800 border-rose-200';
-        isActionNeeded = true;
-        primaryAction = {
-          label: 'Hoàn thiện đề cương',
-          href: `/projects/${p.id}/resubmit`,
-          icon: Edit,
-        };
-        secondaryActions = [
-          {
-            label: 'Xem ý kiến Hội đồng',
-            href: `/projects/${p.id}?tab=COUNCIL_MINUTES`,
-            icon: FileText,
-          },
-          {
-            label: 'Xem phiên bản đề cương',
-            href: `/projects/${p.id}?tab=DOCUMENTS`,
-            icon: HistoryIcon,
-          },
-        ];
-      } else if (
-        p.proposalStatus === 'PROPOSAL_RESUBMITTED' ||
-        p.proposalStatus === 'UNDER_PROPOSAL_REVISION_REVIEW'
-      ) {
-        statusText = 'Chờ xác nhận hoàn thiện';
-        statusColor = 'bg-amber-50 text-amber-800 border-amber-200';
-      } else if (
-        p.ethicsStatus === 'UNDER_ETHICS_REVIEW' ||
-        p.ethicsStatus === 'ETHICS_REVISION_REQUIRED' ||
-        p.ethicsStatus === 'DOSSIER_SUBMITTED' ||
-        p.ethicsStatus === 'SCREENING_IN_PROGRESS'
-      ) {
-        const needsEthicsRevision =
-          p.ethicsStatus === 'ETHICS_REVISION_REQUIRED';
-
-        statusText =
-          p.ethicsStatus === 'SCREENING_IN_PROGRESS'
-            ? 'Đang sàng lọc đạo đức'
-            : p.ethicsStatus === 'DOSSIER_SUBMITTED'
-              ? 'Chờ tiếp nhận đạo đức'
-              : p.ethicsStatus === 'UNDER_ETHICS_REVIEW'
-                ? 'Đang thẩm định đạo đức'
-                : 'Cần bổ sung đạo đức';
-        statusColor = 'bg-purple-50 text-purple-800 border-purple-200';
-        isActionNeeded = needsEthicsRevision;
-
-        primaryAction = needsEthicsRevision
-          ? {
-              label: 'Bổ sung hồ sơ',
-              href: `/projects/${p.id}/ethics`,
-              icon: Edit,
-            }
-          : {
-              label: 'Xem trạng thái',
-              href: `/projects/${p.id}?tab=HISTORY`,
-              icon: Shield,
-            };
-      } else if (
-        (p.status === 'WAITING_ASSIGNMENT' ||
-          p.proposalStatus === 'PROPOSAL_APPROVED') &&
-        (!p.ethicsRequired ||
-          p.ethicsStatus === 'NOT_REQUIRED' ||
-          p.ethicsStatus === 'ETHICS_APPROVED')
-      ) {
-        statusText = 'Chờ giao thực hiện';
-        statusColor = 'bg-amber-50 text-amber-800 border-amber-200';
-        primaryAction = {
-          label: 'Xem trạng thái',
-          href: `/projects/${p.id}`,
-          icon: Eye,
-        };
-        secondaryActions = [
-          {
-            label: 'Xem tài liệu',
-            href: `/projects/${p.id}?tab=DOCUMENTS`,
-            icon: FileText,
-          },
-          {
-            label: 'Lịch sử xử lý',
-            href: `/projects/${p.id}?tab=HISTORY`,
-            icon: HistoryIcon,
-          },
-        ];
-      } else if (p.status === 'IN_PROGRESS') {
-        statusText = 'Đang thực hiện';
-        statusColor = 'bg-sky-50 text-[#0A6EBD] border-sky-200';
-        primaryAction = {
-          label: 'Nộp báo cáo',
-          href: `/projects/${p.id}/progress`,
-          icon: Upload,
-        };
-        secondaryActions = [
-          {
-            label: 'Gia hạn / Điều chỉnh',
-            href: `/projects/${p.id}/change-requests`,
-            icon: GitPullRequest,
-          },
-          {
-            label: 'Tài liệu đề tài',
-            href: `/projects/${p.id}?tab=DOCUMENTS`,
-            icon: FileText,
-          },
-        ];
-      } else if (p.status === 'WAITING_ACCEPTANCE') {
-        const dossierStatus = p.acceptanceDossier?.status;
-
-        if (
-          dossierStatus === 'SUBMITTED' ||
-          dossierStatus === 'UNDER_ADMIN_REVIEW' ||
-          dossierStatus === 'RESUBMITTED'
-        ) {
-          statusText = 'Chờ kiểm tra nghiệm thu';
-          statusColor = 'bg-amber-50 text-amber-800 border-amber-200';
-          primaryAction = {
-            label: 'Xem hồ sơ',
-            href: `/projects/${p.id}/acceptance`,
-            icon: Eye,
-          };
-        } else if (dossierStatus === 'REVISION_REQUIRED') {
-          statusText = 'Cần bổ sung nghiệm thu';
-          statusColor = 'bg-rose-50 text-rose-800 border-rose-200';
-          isActionNeeded = true;
-          primaryAction = {
-            label: 'Bổ sung hồ sơ',
-            href: `/projects/${p.id}/acceptance`,
-            icon: Edit,
-          };
-        } else if (
-          dossierStatus === 'ELIGIBLE_FOR_ACCEPTANCE' ||
-          dossierStatus === 'FORWARDED_TO_COUNCIL'
-        ) {
-          statusText = 'Chờ Hội đồng nghiệm thu';
-          statusColor = 'bg-sky-50 text-[#0A6EBD] border-sky-200';
-          primaryAction = {
-            label: 'Xem lịch Hội đồng',
-            href: `/projects/${p.id}?tab=COUNCIL`,
-            icon: Calendar,
-          };
-        } else {
-          statusText = 'Chuẩn bị nghiệm thu';
-          statusColor = 'bg-amber-50 text-amber-800 border-amber-200';
-          isActionNeeded = true;
-          primaryAction = {
-            label: 'Nộp hồ sơ',
-            href: `/projects/${p.id}/acceptance`,
-            icon: Upload,
-          };
-        }
-      } else if (p.status === 'ACCEPTED') {
-        statusText = 'Đã nghiệm thu';
-        statusColor = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-        primaryAction = {
-          label: 'Xem kết quả',
-          href: `/projects/${p.id}?tab=COUNCIL_MINUTES`,
-          icon: Award,
-        };
-      } else if (p.status === 'RECOGNIZED') {
-        statusText = 'Đã công nhận';
-        statusColor = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-        primaryAction = {
-          label: 'Xem quyết định',
-          href: `/projects/${p.id}?tab=DECISIONS`,
-          icon: FileText,
-        };
-      } else if (p.status === 'CLOSED' || p.status === 'ARCHIVED') {
-        statusText = p.status === 'ARCHIVED' ? 'Đã lưu trữ' : 'Đã đóng';
-        statusColor = 'bg-slate-100 text-slate-700 border-slate-200';
-        primaryAction = {
-          label: 'Xem hồ sơ',
-          href: `/projects/${p.id}`,
-          icon: Eye,
-        };
-      } else if (
-        p.status === 'SUSPENDED' ||
-        p.status === 'TERMINATED' ||
-        p.status === 'REJECTED'
-      ) {
-        statusText =
-          p.status === 'SUSPENDED'
-            ? 'Tạm dừng'
-            : p.status === 'TERMINATED'
-              ? 'Đã chấm dứt'
-              : 'Không được chấp thuận';
-        statusColor = 'bg-rose-50 text-rose-800 border-rose-200';
-        primaryAction = {
-          label: 'Xem chi tiết',
-          href: `/projects/${p.id}`,
-          icon: Eye,
-        };
-      }
-
-      const shortRound = p.registrationRoundName || '—';
+      const executionPeriod =
+        project.startDate && project.endDate
+          ? `${formatDate(project.startDate)} – ${formatDate(
+              project.endDate
+            )}`
+          : '—';
 
       return {
-        ...p,
-        displayCode: p.projectCode || p.proposalCode || '—',
-        round: shortRound,
-        statusText,
-        statusColor,
-        primaryAction,
-        secondaryActions,
-        isActionNeeded,
+        ...project,
+        displayCode:
+          project.projectCode || project.proposalCode || '—',
+        roundLabel,
+        displayStatus: String(status || ''),
+        displayStatusType: type,
+        isActionNeeded: isActionRequired(project, isPI),
+        nextStepText: getNextStepText(project, isPI),
+        registrationDate,
+        executionPeriod,
       };
     });
-  }, [rawProjects]);
+  }, [rawProjects, currentUser.id, currentUser.role]);
 
   const tabCounts = useMemo(
     () => ({
-      all: myProjects.length,
-      action_needed: myProjects.filter((p) => p.isActionNeeded).length,
-      processing: myProjects.filter(
-        (p) =>
-          !p.isActionNeeded &&
-          !['IN_PROGRESS', 'ACCEPTED', 'RECOGNIZED', 'CLOSED', 'ARCHIVED'].includes(
-            p.status
-          )
+      all: rows.length,
+      action_needed: rows.filter((row) => row.isActionNeeded).length,
+      processing: rows.filter(
+        (row) =>
+          row.status === 'SUBMITTED' ||
+          row.status === 'WAITING_ASSIGNMENT' ||
+          row.status === 'WAITING_ACCEPTANCE'
       ).length,
-      in_progress: myProjects.filter((p) => p.status === 'IN_PROGRESS').length,
-      completed: myProjects.filter((p) =>
-        ['ACCEPTED', 'RECOGNIZED', 'CLOSED', 'ARCHIVED'].includes(p.status)
+      in_progress: rows.filter(
+        (row) => row.status === 'IN_PROGRESS'
+      ).length,
+      completed: rows.filter((row) =>
+        ['RECOGNIZED', 'CLOSED', 'ARCHIVED'].includes(row.status)
       ).length,
     }),
-    [myProjects]
+    [rows]
   );
 
-  const filteredProjects = useMemo(() => {
-    return [...myProjects]
-      .filter((p) => {
-        if (activeTab === 'action_needed' && !p.isActionNeeded) return false;
+  const filteredRows = useMemo(() => {
+    return [...rows]
+      .filter((project) => {
+        if (activeTab === 'action_needed' && !project.isActionNeeded) {
+          return false;
+        }
+
         if (
           activeTab === 'processing' &&
-          (p.isActionNeeded ||
-            ['IN_PROGRESS', 'ACCEPTED', 'RECOGNIZED', 'CLOSED', 'ARCHIVED'].includes(
-              p.status
-            ))
+          ![
+            'SUBMITTED',
+            'WAITING_ASSIGNMENT',
+            'WAITING_ACCEPTANCE',
+          ].includes(project.status)
         ) {
           return false;
         }
-        if (activeTab === 'in_progress' && p.status !== 'IN_PROGRESS') return false;
+
+        if (
+          activeTab === 'in_progress' &&
+          project.status !== 'IN_PROGRESS'
+        ) {
+          return false;
+        }
+
         if (
           activeTab === 'completed' &&
-          !['ACCEPTED', 'RECOGNIZED', 'CLOSED', 'ARCHIVED'].includes(p.status)
+          !['RECOGNIZED', 'CLOSED', 'ARCHIVED'].includes(project.status)
         ) {
           return false;
         }
 
         if (
           selectedRound !== 'ALL' &&
-          p.registrationRoundId !== selectedRound
+          project.registrationRoundId !== selectedRound
         ) {
           return false;
         }
 
-        const q = searchTerm.trim().toLowerCase();
+        const query = searchTerm.trim().toLowerCase();
+        if (!query) return true;
 
-        if (q) {
-          const haystack = [
-            p.title,
-            p.proposalCode,
-            p.projectCode,
-            p.researchField,
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase();
-
-          if (!haystack.includes(q)) return false;
-        }
-
-        return true;
+        return [
+          project.proposalCode,
+          project.projectCode,
+          project.title,
+          project.principalInvestigatorName,
+          project.researchField,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(query);
       })
       .sort((a, b) => {
         if (sortBy === 'DEADLINE') {
@@ -578,57 +539,179 @@ export default function MyProjectsPage() {
           const bTime = b.endDate
             ? new Date(b.endDate).getTime()
             : Number.MAX_SAFE_INTEGER;
-
           return aTime - bTime;
         }
 
-        const aTime = new Date(
-          a.updatedAt || a.submittedAt || a.createdAt
-        ).getTime();
-        const bTime = new Date(
-          b.updatedAt || b.submittedAt || b.createdAt
-        ).getTime();
-
-        return bTime - aTime;
+        return (
+          new Date(
+            b.updatedAt || b.submittedAt || b.createdAt
+          ).getTime() -
+          new Date(
+            a.updatedAt || a.submittedAt || a.createdAt
+          ).getTime()
+        );
       });
-  }, [myProjects, activeTab, selectedRound, searchTerm, sortBy]);
+  }, [rows, activeTab, selectedRound, searchTerm, sortBy]);
 
-  const pagedProjects = useMemo(() => {
+  const pagedRows = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
-    return filteredProjects.slice(start, start + pageSize);
-  }, [filteredProjects, currentPage, pageSize]);
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, currentPage, pageSize]);
+
+  const deleteDraft = (project: ResearchProject) => {
+    confirm({
+      title: 'Xóa bản nháp',
+      message: `Xóa bản nháp "${project.title}"?`,
+      confirmLabel: 'Xóa',
+      type: 'danger',
+      onConfirm: () => {
+        if (!repo.deleteProject(project.id)) {
+          error('Không thể xóa bản nháp.');
+          return;
+        }
+
+        success('Đã xóa bản nháp.');
+        setDataVersion((value) => value + 1);
+      },
+    });
+  };
+
+  const submitOutline = async (payload: SubmitOutlinePayload) => {
+    const project = repo.getProjectById(payload.projectId);
+    if (!project) throw new Error('PROJECT_NOT_FOUND');
+
+    if (
+      currentUser.role !== 'RESEARCHER' ||
+      currentUser.id !== project.principalInvestigatorId ||
+      project.proposalStatus !== 'ADMIN_VALIDATED'
+    ) {
+      throw new Error('OUTLINE_SUBMISSION_NOT_ALLOWED');
+    }
+
+    const now = new Date().toISOString();
+    const existingDocument = project.documents?.find(
+      (document) => document.documentType === 'DETAILED_OUTLINE'
+    );
+
+    if (existingDocument) {
+      repo.addDocumentVersion(project.id, existingDocument.id, {
+        id: `${existingDocument.id}-v-${Date.now()}`,
+        documentId: existingDocument.id,
+        version: existingDocument.currentVersion + 1,
+        fileName: payload.file.name,
+        fileSize: `${(
+          payload.file.size /
+          1024 /
+          1024
+        ).toFixed(2)} MB`,
+        uploadedBy: currentUser.id,
+        uploadedByName: currentUser.fullName,
+        uploadedAt: now,
+        downloadUrl: '',
+        isCurrent: true,
+      });
+    } else {
+      const documentId = `outline-${project.id}-${Date.now()}`;
+      const versionId = `${documentId}-v1`;
+
+      repo.addProjectDocument(project.id, {
+        id: documentId,
+        projectId: project.id,
+        documentType: 'DETAILED_OUTLINE',
+        title: 'Thuyết minh đề cương chi tiết',
+        currentVersion: 1,
+        currentVersionId: versionId,
+        versions: [
+          {
+            id: versionId,
+            documentId,
+            version: 1,
+            fileName: payload.file.name,
+            fileSize: `${(
+              payload.file.size /
+              1024 /
+              1024
+            ).toFixed(2)} MB`,
+            uploadedBy: currentUser.id,
+            uploadedByName: currentUser.fullName,
+            uploadedAt: now,
+            downloadUrl: '',
+            isCurrent: true,
+          },
+        ],
+      });
+    }
+
+    const updated = repo.updateProject(project.id, {
+      proposalStatus: 'OUTLINE_SUBMITTED',
+      startDate: monthToStartDate(payload.fromMonth),
+      endDate: monthToEndDate(payload.toMonth),
+      updatedAt: now,
+    });
+
+    if (!updated) throw new Error('UPDATE_PROJECT_FAILED');
+
+    repo.addAuditLog({
+      userId: currentUser.id,
+      userFullName: currentUser.fullName,
+      userRole: currentUser.role,
+      entityType: 'PROJECT',
+      entityId: project.id,
+      actionCode: 'SUBMIT_OUTLINE',
+      fromStatus: 'ADMIN_VALIDATED',
+      toStatus: 'OUTLINE_SUBMITTED',
+      notes: `Nộp Thuyết minh đề cương chi tiết: ${payload.file.name}.`,
+    });
+
+    success('Đã nộp đề cương.');
+    setOutlineProject(null);
+    setDataVersion((value) => value + 1);
+    router.refresh();
+  };
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4 text-slate-800">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="mx-auto max-w-[1600px] space-y-4 pb-10 text-xs text-slate-800">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">
+          <h1 className="text-base font-bold text-slate-900">
             Đề tài của tôi
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Theo dõi trạng thái và thực hiện các công việc liên quan đến đề tài
-            bạn phụ trách hoặc tham gia.
+          <p className="mt-0.5 text-slate-500">
+            Theo dõi trạng thái và thực hiện đúng tác vụ tại từng giai đoạn
           </p>
         </div>
 
-        <Link
-          href="/projects/register"
-          className="inline-flex items-center gap-2 rounded-lg bg-[#0A6EBD] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#085896]"
-        >
-          <Plus className="h-4 w-4" />
-          Đăng ký đề tài mới
-        </Link>
-      </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Printer className="h-3.5 w-3.5" />
+            In danh sách
+          </button>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Filter className="h-4 w-4 text-slate-400" />
+          {currentUser.role === 'RESEARCHER' && (
+            <Link
+              href="/projects/register"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#0A6EBD] px-3.5 py-1.5 font-bold text-white hover:bg-[#085896]"
+            >
+              <Plus className="h-4 w-4" />
+              Đăng ký đề tài
+            </Link>
+          )}
+        </div>
+      </header>
+
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
+        <div className="flex flex-wrap items-center gap-1 border-b border-slate-100 px-3 py-2">
+          <Filter className="mr-1 h-4 w-4 text-slate-400" />
 
           {[
             { id: 'all', label: 'Tất cả', count: tabCounts.all },
             {
               id: 'action_needed',
-              label: 'Cần tôi xử lý',
+              label: 'Cần xử lý',
               count: tabCounts.action_needed,
             },
             {
@@ -643,7 +726,7 @@ export default function MyProjectsPage() {
             },
             {
               id: 'completed',
-              label: 'Đã hoàn thành',
+              label: 'Hoàn thành',
               count: tabCounts.completed,
             },
           ].map((tab) => (
@@ -654,42 +737,50 @@ export default function MyProjectsPage() {
                 setActiveTab(tab.id as ActiveTab);
                 setCurrentPage(1);
               }}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-semibold transition ${
                 activeTab === tab.id
                   ? 'border-sky-200 bg-sky-50 text-[#0A6EBD]'
                   : 'border-transparent text-slate-600 hover:bg-slate-50'
               }`}
             >
               {tab.label}
-              <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] text-slate-500">
+              <span className="rounded-full bg-white px-1.5 py-0.5 font-mono text-[10px]">
                 {tab.count}
               </span>
             </button>
           ))}
+        </div>
 
-          <div className="flex-1" />
-
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <div className="flex flex-wrap items-center gap-2 p-3">
+          <div className="relative min-w-[260px] flex-1">
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <input
-              type="text"
               value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
+              onChange={(event) => {
+                setSearchTerm(event.target.value);
                 setCurrentPage(1);
               }}
-              placeholder="Tìm mã hoặc tên đề tài..."
-              className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-[#0A6EBD]"
+              placeholder="Tìm mã đề tài, tên đề tài..."
+              className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-8 outline-none focus:border-[#0A6EBD]"
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
 
           <select
             value={selectedRound}
-            onChange={(e) => {
-              setSelectedRound(e.target.value);
+            onChange={(event) => {
+              setSelectedRound(event.target.value);
               setCurrentPage(1);
             }}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 font-medium outline-none"
           >
             <option value="ALL">Tất cả đợt</option>
             {rounds.map((round) => (
@@ -701,8 +792,10 @@ export default function MyProjectsPage() {
 
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as SortBy)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none"
+            onChange={(event) =>
+              setSortBy(event.target.value as SortBy)
+            }
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 font-medium outline-none"
           >
             <option value="NEWEST">Cập nhật mới nhất</option>
             <option value="DEADLINE">Hạn gần nhất</option>
@@ -714,252 +807,242 @@ export default function MyProjectsPage() {
               onClick={() => setViewMode('table')}
               className={`rounded-md p-1.5 ${
                 viewMode === 'table'
-                  ? 'bg-white text-[#0A6EBD] shadow-sm'
+                  ? 'bg-white text-[#0A6EBD] shadow-2xs'
                   : 'text-slate-500'
               }`}
-              aria-label="Dạng bảng"
+              title="Dạng bảng"
             >
-              <List className="h-4 w-4" />
+              <List className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
               onClick={() => setViewMode('grid')}
               className={`rounded-md p-1.5 ${
                 viewMode === 'grid'
-                  ? 'bg-white text-[#0A6EBD] shadow-sm'
+                  ? 'bg-white text-[#0A6EBD] shadow-2xs'
                   : 'text-slate-500'
               }`}
-              aria-label="Dạng thẻ"
+              title="Dạng thẻ"
             >
-              <LayoutGrid className="h-4 w-4" />
+              <LayoutGrid className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
-      </div>
+      </section>
 
       {viewMode === 'table' && (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <section className="overflow-visible rounded-xl border border-slate-200 bg-white shadow-2xs">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
+            <table className="w-full border-collapse text-left">
+              <thead className="bg-[#0B2A63] text-[11px] font-bold uppercase tracking-wide text-white">
                 <tr>
-                  <th className="w-36 px-5 py-3">Mã</th>
-                  <th className="min-w-[300px] px-5 py-3">Đề tài</th>
-                  <th className="w-44 px-5 py-3">Trạng thái</th>
-                  <th className="w-36 px-5 py-3">Thời hạn</th>
-                  <th className="w-20 px-5 py-3 text-center">Thao tác</th>
+                  <th className="w-32 px-4 py-3">Mã đề xuất</th>
+                  <th className="w-32 px-4 py-3">Mã đề tài</th>
+                  <th className="min-w-[320px] px-4 py-3">Tên đề tài</th>
+                  <th className="min-w-[180px] px-4 py-3">Chủ nhiệm</th>
+                  <th className="w-32 px-4 py-3 text-center">Ngày đăng ký</th>
+                  <th className="w-24 px-4 py-3 text-center">Gia hạn</th>
+                  <th className="w-24 px-4 py-3 text-center">Thao tác</th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-slate-100">
-                {pagedProjects.length === 0 ? (
+                {pagedRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={5}
-                      className="px-5 py-12 text-center text-sm text-slate-400"
+                      colSpan={7}
+                      className="px-4 py-12 text-center text-slate-400"
                     >
                       Không có đề tài phù hợp.
                     </td>
                   </tr>
                 ) : (
-                  pagedProjects.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50/70">
-                      <td className="px-5 py-4 align-top">
-                        <div className="font-mono text-xs font-semibold text-[#0A6EBD]">
-                          {p.displayCode}
-                        </div>
-                        {p.projectCode && p.proposalCode && (
-                          <div className="mt-1 font-mono text-[11px] text-slate-400">
-                            ĐX: {p.proposalCode}
-                          </div>
-                        )}
-                      </td>
+                  pagedRows.map((project) => {
+                    const isPI =
+                      currentUser.role === 'RESEARCHER' &&
+                      currentUser.id ===
+                        project.principalInvestigatorId;
 
-                      <td className="px-5 py-4 align-top">
-                        <Link
-                          href={`/projects/${p.id}`}
-                          className="font-semibold leading-5 text-slate-900 hover:text-[#0A6EBD]"
-                        >
-                          {p.title}
-                        </Link>
-                        <div className="mt-1.5 flex flex-wrap gap-2 text-xs text-slate-500">
-                          <span>{p.researchField || '—'}</span>
-                          <span>•</span>
-                          <span>{p.round}</span>
-                        </div>
-                      </td>
+                    return (
+                      <tr
+                        key={project.id}
+                        className="hover:bg-slate-50/70"
+                      >
+                        <td className="px-4 py-3 align-top font-mono font-bold text-slate-600">
+                          {project.proposalCode || '—'}
+                        </td>
 
-                      <td className="px-5 py-4 align-top">
-                        <span
-                          className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold ${p.statusColor}`}
-                        >
-                          {p.statusText}
-                        </span>
-                      </td>
-
-                      <td className="px-5 py-4 align-top text-sm text-slate-600">
-                        {p.endDate ? formatDate(p.endDate) : '—'}
-                      </td>
-
-                      <td className="px-5 py-4 align-middle text-center">
-                        <div
-                          className="relative inline-block text-left"
-                          ref={openDropdownId === p.id ? dropdownRef : undefined}
-                        >
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setOpenDropdownId(
-                                openDropdownId === p.id ? null : p.id
-                              )
-                            }
-                            className="rounded-lg border border-slate-300 bg-white p-2 text-slate-500 transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700"
-                            aria-label={`Thao tác với ${p.displayCode}`}
-                            title="Thao tác"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
-
-                          {openDropdownId === p.id && (
-                            <div className="absolute right-0 top-10 z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl">
-                              {[p.primaryAction, ...p.secondaryActions].map(
-                                (action: ActionItem, index: number) =>
-                                  action.onClick ? (
-                                    <button
-                                      key={`${action.label}-${index}`}
-                                      type="button"
-                                      onClick={() => {
-                                        setOpenDropdownId(null);
-                                        action.onClick?.();
-                                      }}
-                                      className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition ${
-                                        action.isDestructive
-                                          ? 'text-rose-600 hover:bg-rose-50'
-                                          : 'text-slate-700 hover:bg-slate-50'
-                                      }`}
-                                    >
-                                      <action.icon className="h-4 w-4 shrink-0" />
-                                      {action.label}
-                                    </button>
-                                  ) : (
-                                    <Link
-                                      key={`${action.label}-${index}`}
-                                      href={action.href || '#'}
-                                      onClick={() => setOpenDropdownId(null)}
-                                      className={`flex items-center gap-2 px-3 py-2.5 text-sm transition ${
-                                        action.isDestructive
-                                          ? 'text-rose-600 hover:bg-rose-50'
-                                          : 'text-slate-700 hover:bg-slate-50'
-                                      }`}
-                                    >
-                                      <action.icon className="h-4 w-4 shrink-0 text-slate-400" />
-                                      {action.label}
-                                    </Link>
-                                  )
-                              )}
-                            </div>
+                        <td className="px-4 py-3 align-top font-mono font-bold text-[#0A6EBD]">
+                          {project.projectCode ? (
+                            <Link href={`/projects/${project.id}`} className="hover:underline">
+                              {project.projectCode}
+                            </Link>
+                          ) : (
+                            <span className="font-normal text-slate-300">—</span>
                           )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+
+                        <td className="px-4 py-3 align-top">
+                          <Link
+                            href={`/projects/${project.id}`}
+                            className="line-clamp-2 font-semibold leading-snug text-slate-900 hover:text-[#0A6EBD]"
+                            title={project.title}
+                          >
+                            {project.title}
+                          </Link>
+                        </td>
+
+                        <td className="px-4 py-3 align-top text-[11px] font-semibold text-slate-700">
+                          {project.principalInvestigatorName}
+                        </td>
+
+                        <td className="px-4 py-3 text-center align-top font-mono text-[11px] text-slate-500">
+                          {project.registrationDate}
+                        </td>
+
+                        <td className="px-4 py-3 text-center align-top">
+                          {project.changeRequests?.filter(
+                            (request) =>
+                              request.type === 'EXTENSION' &&
+                              request.status === 'APPROVED'
+                          ).length ? (
+                            <span className="inline-flex min-w-6 justify-center rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-mono text-[11px] font-bold text-amber-700">
+                              {
+                                project.changeRequests.filter(
+                                  (request) =>
+                                    request.type === 'EXTENSION' &&
+                                    request.status === 'APPROVED'
+                                ).length
+                              }
+                            </span>
+                          ) : (
+                            <span className="font-mono text-[11px] text-slate-400">0</span>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3 text-center align-top">
+                          <div
+                            className="inline-flex items-center gap-1.5"
+                            ref={openMenuId === project.id ? menuRef : null}
+                          >
+                            <PrimaryAction
+                              project={project}
+                              isPI={isPI}
+                              onUploadOutline={() => setOutlineProject(project)}
+                            />
+                            <MoreActions
+                              project={project}
+                              isPI={isPI}
+                              isOpen={openMenuId === project.id}
+                              onToggle={() =>
+                                setOpenMenuId(
+                                  openMenuId === project.id ? null : project.id
+                                )
+                              }
+                              onClose={() => setOpenMenuId(null)}
+                              onDelete={() => deleteDraft(project)}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
-        </div>
+        </section>
       )}
 
       {viewMode === 'grid' && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {pagedProjects.map((p) => (
-            <article
-              key={p.id}
-              className="rounded-xl border border-slate-200 bg-white p-5"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <span className="font-mono text-xs font-semibold text-[#0A6EBD]">
-                  {p.displayCode}
-                </span>
-                <span
-                  className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${p.statusColor}`}
-                >
-                  {p.statusText}
-                </span>
-              </div>
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {pagedRows.map((project) => {
+            const isPI =
+              currentUser.role === 'RESEARCHER' &&
+              currentUser.id === project.principalInvestigatorId;
 
-              <Link
-                href={`/projects/${p.id}`}
-                className="mt-3 block text-sm font-semibold leading-5 text-slate-900 hover:text-[#0A6EBD]"
+            return (
+              <article
+                key={project.id}
+                className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs"
               >
-                {p.title}
-              </Link>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Link
+                      href={`/projects/${project.id}`}
+                      className="font-mono text-[11px] font-bold text-[#0A6EBD] hover:underline"
+                    >
+                      {project.displayCode}
+                    </Link>
+                    <Link
+                      href={`/projects/${project.id}`}
+                      className="mt-1.5 block font-bold leading-snug text-slate-900 hover:text-[#0A6EBD]"
+                    >
+                      {project.title}
+                    </Link>
+                  </div>
 
-              <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
-                <div className="text-xs text-slate-500">
-                  Thời hạn:{' '}
-                  <span className="font-medium text-slate-700">
-                    {p.endDate ? formatDate(p.endDate) : '—'}
-                  </span>
+                  <StatusBadge
+                    status={project.displayStatus}
+                    type={project.displayStatusType}
+                  />
                 </div>
 
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setOpenDropdownId(openDropdownId === p.id ? null : p.id)
+                <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                    Bước tiếp theo
+                  </p>
+                  <p className="mt-1 font-medium text-slate-700">
+                    {project.nextStepText}
+                  </p>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+                  <div className="text-[11px] text-slate-500">
+                    <span>{project.roundLabel}</span>
+                    {project.executionPeriod !== '—' && (
+                      <span> · {project.executionPeriod}</span>
+                    )}
+                  </div>
+
+                  <div
+                    className="flex items-center gap-1.5"
+                    ref={
+                      openMenuId === project.id ? menuRef : null
                     }
-                    className="rounded-lg border border-slate-300 bg-white p-2 text-slate-500 transition hover:bg-slate-50"
-                    aria-label={`Thao tác với ${p.displayCode}`}
                   >
-                    <MoreVertical className="h-4 w-4" />
-                  </button>
-
-                  {openDropdownId === p.id && (
-                    <div className="absolute bottom-10 right-0 z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl">
-                      {[p.primaryAction, ...p.secondaryActions].map(
-                        (action: ActionItem, index: number) =>
-                          action.onClick ? (
-                            <button
-                              key={`${action.label}-${index}`}
-                              type="button"
-                              onClick={() => {
-                                setOpenDropdownId(null);
-                                action.onClick?.();
-                              }}
-                              className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition ${
-                                action.isDestructive
-                                  ? 'text-rose-600 hover:bg-rose-50'
-                                  : 'text-slate-700 hover:bg-slate-50'
-                              }`}
-                            >
-                              <action.icon className="h-4 w-4 shrink-0" />
-                              {action.label}
-                            </button>
-                          ) : (
-                            <Link
-                              key={`${action.label}-${index}`}
-                              href={action.href || '#'}
-                              onClick={() => setOpenDropdownId(null)}
-                              className="flex items-center gap-2 px-3 py-2.5 text-sm text-slate-700 transition hover:bg-slate-50"
-                            >
-                              <action.icon className="h-4 w-4 shrink-0 text-slate-400" />
-                              {action.label}
-                            </Link>
-                          )
-                      )}
-                    </div>
-                  )}
+                    <PrimaryAction
+                      project={project}
+                      isPI={isPI}
+                      onUploadOutline={() =>
+                        setOutlineProject(project)
+                      }
+                    />
+                    <MoreActions
+                      project={project}
+                      isPI={isPI}
+                      isOpen={openMenuId === project.id}
+                      onToggle={() =>
+                        setOpenMenuId(
+                          openMenuId === project.id
+                            ? null
+                            : project.id
+                        )
+                      }
+                      onClose={() => setOpenMenuId(null)}
+                      onDelete={() => deleteDraft(project)}
+                    />
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
-        </div>
+              </article>
+            );
+          })}
+        </section>
       )}
 
       <Pagination
         currentPage={currentPage}
-        totalItems={filteredProjects.length}
+        totalItems={filteredRows.length}
         pageSize={pageSize}
         onPageChange={setCurrentPage}
         onPageSizeChange={(size) => {
@@ -970,15 +1053,19 @@ export default function MyProjectsPage() {
       />
 
       <SubmitOutlineModal
-        isOpen={!!outlineSubmissionProject}
-        projectId={outlineSubmissionProject?.id ?? ''}
+        isOpen={Boolean(outlineProject)}
+        projectId={outlineProject?.id ?? ''}
         displayCode={
-          outlineSubmissionProject?.projectCode ||
-          outlineSubmissionProject?.proposalCode ||
+          outlineProject?.projectCode ||
+          outlineProject?.proposalCode ||
           ''
         }
-        onClose={() => setOutlineSubmissionProject(null)}
-        onSubmit={handleSubmitOutline}
+        defaultFromMonth={
+          outlineProject?.startDate?.slice(0, 7) ?? ''
+        }
+        defaultToMonth={outlineProject?.endDate?.slice(0, 7) ?? ''}
+        onClose={() => setOutlineProject(null)}
+        onSubmit={submitOutline}
       />
     </div>
   );

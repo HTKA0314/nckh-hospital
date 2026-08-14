@@ -2,6 +2,11 @@ import {
   AuditLog,
   ChangeRequest,
   Council,
+  CouncilConclusion,
+  EvaluationResult,
+  MeetingMinutes,
+  ProposalEvaluation,
+  AcceptanceEvaluation,
   Department,
   Decision,
   DocumentVersion,
@@ -46,6 +51,8 @@ class MockRepository {
     progressReports: project.progressReports || [],
     changeRequests: project.changeRequests || [],
     statusHistory: project.statusHistory || [],
+    proposalEvaluations: project.proposalEvaluations || [],
+    acceptanceEvaluations: project.acceptanceEvaluations || [],
   }));
 
   private councils: Council[] = [...SEED_COUNCILS];
@@ -479,9 +486,7 @@ class MockRepository {
   // COUNCILS
   // ---------------------------------------------------------------------------
 
-  getCouncils(
-    type?: 'PROPOSAL_REVIEW' | 'ACCEPTANCE_REVIEW'
-  ): Council[] {
+  getCouncils(type?: Council['type']): Council[] {
     return type
       ? this.councils.filter((council) => council.type === type)
       : [...this.councils];
@@ -491,27 +496,431 @@ class MockRepository {
     return this.councils.find((council) => council.id === id);
   }
 
-  createCouncil(council: Council): Council {
-    this.councils.unshift(council);
-    return council;
+  getDepartmentNameByUserId(userId: string): string | undefined {
+    const user = this.getUserById(userId);
+    if (!user) return undefined;
+    return this.getDepartmentById(user.departmentId)?.name;
   }
 
-  updateCouncil(
-    id: string,
-    updates: Partial<Council>
-  ): Council | undefined {
-    const index = this.councils.findIndex(
-      (council) => council.id === id
-    );
+  getCommonCouncilPolicy(projectIds: string[]): WorkflowPolicy['councilPolicy'] | undefined {
+    if (projectIds.length === 0) return undefined;
 
-    if (index === -1) return undefined;
+    const projects = projectIds
+      .map((projectId) => this.getProjectById(projectId))
+      .filter((project): project is ResearchProject => Boolean(project));
 
-    this.councils[index] = {
-      ...this.councils[index],
-      ...updates,
+    if (projects.length !== projectIds.length) return undefined;
+
+    const policyIds = new Set(projects.map((project) => project.workflowPolicyId));
+    if (policyIds.size !== 1) return undefined;
+
+    const policy = this.getPolicyById(projects[0].workflowPolicyId);
+    return policy?.councilPolicy;
+  }
+
+  createCouncil(council: Council): Council | undefined {
+    if (this.councils.some((item) => item.id === council.id || item.code === council.code)) {
+      return undefined;
+    }
+
+    if (council.projectIds.length === 0) return undefined;
+    if (council.projectIds.some((projectId) => !this.getProjectById(projectId))) return undefined;
+
+    const chairCount = council.members.filter((member) => member.roleInCouncil === 'CHỦ_TỊCH').length;
+    const secretaryCount = council.members.filter((member) => member.roleInCouncil === 'THƯ_KÝ').length;
+    if (chairCount !== 1 || secretaryCount !== 1) return undefined;
+
+    if (new Set(council.members.map((member) => member.userId)).size !== council.members.length) {
+      return undefined;
+    }
+
+    const created: Council = {
+      ...council,
+      evaluationResults: council.evaluationResults || [],
+      minutes: council.minutes || [],
     };
 
-    return this.councils[index];
+    this.councils.unshift(created);
+    return created;
+  }
+
+  updateCouncil(id: string, updates: Partial<Council>): Council | undefined {
+    const index = this.councils.findIndex((council) => council.id === id);
+    if (index === -1) return undefined;
+
+    const current = this.councils[index];
+
+    // ID và loại Hội đồng không được thay đổi sau khi đã tạo.
+    const updated: Council = {
+      ...current,
+      ...updates,
+      id: current.id,
+      type: current.type,
+    };
+
+    this.councils[index] = updated;
+    return updated;
+  }
+
+  deleteCouncil(id: string): boolean {
+    const council = this.getCouncilById(id);
+    if (!council || council.status !== 'DRAFT') return false;
+
+    const index = this.councils.findIndex((item) => item.id === id);
+    if (index === -1) return false;
+
+    this.councils.splice(index, 1);
+    return true;
+  }
+
+  transitionCouncilStatus(
+    councilId: string,
+    nextStatus: Council['status']
+  ): Council | undefined {
+    const council = this.getCouncilById(councilId);
+    if (!council) return undefined;
+
+    const transitions: Partial<Record<Council['status'], Council['status'][]>> = {
+      DRAFT: ['ESTABLISHED', 'DISSOLVED'],
+      ESTABLISHED: ['EVALUATING', 'DISSOLVED'],
+      EVALUATING: ['MINUTES_DRAFTED', 'DISSOLVED'],
+      MINUTES_DRAFTED: ['CONCLUDED', 'DISSOLVED'],
+      CONCLUDED: [],
+      DISSOLVED: [],
+    };
+
+    if (!transitions[council.status]?.includes(nextStatus)) return undefined;
+    return this.updateCouncil(councilId, { status: nextStatus });
+  }
+
+  getCouncilEvaluation(
+    councilId: string,
+    projectId: string,
+    councilMemberId: string
+  ): EvaluationResult | undefined {
+    return this.getCouncilById(councilId)?.evaluationResults?.find(
+      (result) =>
+        result.projectId === projectId &&
+        result.councilMemberId === councilMemberId
+    );
+  }
+
+  saveCouncilEvaluationDraft(
+    councilId: string,
+    evaluation: EvaluationResult
+  ): EvaluationResult | undefined {
+    const council = this.getCouncilById(councilId);
+    if (!council || !['ESTABLISHED', 'EVALUATING'].includes(council.status)) return undefined;
+    if (evaluation.councilId !== councilId || !council.projectIds.includes(evaluation.projectId)) return undefined;
+
+    const member = council.members.find((item) => item.id === evaluation.councilMemberId);
+    if (!member || member.canEvaluate === false || member.hasConflictOfInterest) return undefined;
+
+    const existing = this.getCouncilEvaluation(councilId, evaluation.projectId, evaluation.councilMemberId);
+    if (existing?.status === 'SIGNED') return undefined;
+
+    const now = new Date().toISOString();
+    const draft: EvaluationResult = {
+      ...evaluation,
+      councilMemberName: member.userFullName,
+      roleInCouncil: member.roleInCouncil,
+      status: 'DRAFT',
+      submittedAt: existing?.submittedAt || evaluation.submittedAt || now,
+      updatedAt: now,
+    };
+
+    const results = [...(council.evaluationResults || [])];
+    const index = results.findIndex(
+      (item) => item.projectId === draft.projectId && item.councilMemberId === draft.councilMemberId
+    );
+    if (index >= 0) results[index] = draft;
+    else results.push(draft);
+
+    this.updateCouncil(councilId, {
+      evaluationResults: results,
+      status: council.status === 'ESTABLISHED' ? 'EVALUATING' : council.status,
+    });
+
+    return draft;
+  }
+
+  submitCouncilEvaluation(
+    councilId: string,
+    projectId: string,
+    councilMemberId: string
+  ): EvaluationResult | undefined {
+    const council = this.getCouncilById(councilId);
+    if (!council || !['ESTABLISHED', 'EVALUATING'].includes(council.status)) return undefined;
+
+    const results = [...(council.evaluationResults || [])];
+    const index = results.findIndex(
+      (item) => item.projectId === projectId && item.councilMemberId === councilMemberId
+    );
+    if (index === -1 || results[index].status === 'SIGNED') return undefined;
+
+    const submitted: EvaluationResult = {
+      ...results[index],
+      status: 'SUBMITTED',
+      submittedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    results[index] = submitted;
+
+    this.updateCouncil(councilId, { evaluationResults: results, status: 'EVALUATING' });
+    return submitted;
+  }
+
+  signCouncilEvaluation(
+    councilId: string,
+    projectId: string,
+    councilMemberId: string,
+    signerUserId: string
+  ): EvaluationResult | undefined {
+    const council = this.getCouncilById(councilId);
+    const signer = this.getUserById(signerUserId);
+    if (!council || !signer) return undefined;
+
+    const member = council.members.find((item) => item.id === councilMemberId);
+    if (!member || member.userId !== signerUserId) return undefined;
+
+    const results = [...(council.evaluationResults || [])];
+    const index = results.findIndex(
+      (item) => item.projectId === projectId && item.councilMemberId === councilMemberId
+    );
+    if (index === -1 || results[index].status !== 'SUBMITTED') return undefined;
+
+    const signed: EvaluationResult = {
+      ...results[index],
+      status: 'SIGNED',
+      signedByUserId: signer.id,
+      signedByName: signer.fullName,
+      signedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    results[index] = signed;
+
+    this.updateCouncil(councilId, { evaluationResults: results });
+    return signed;
+  }
+
+  getCouncilMeetingMinutes(councilId: string): MeetingMinutes | undefined {
+    return this.getCouncilById(councilId)?.minutes?.[0];
+  }
+
+  saveCouncilMeetingMinutesDraft(
+    councilId: string,
+    minutes: MeetingMinutes
+  ): MeetingMinutes | undefined {
+    const council = this.getCouncilById(councilId);
+    if (!council || !['EVALUATING', 'MINUTES_DRAFTED'].includes(council.status)) return undefined;
+    if (minutes.councilId !== councilId) return undefined;
+
+    const saved: MeetingMinutes = {
+      ...minutes,
+      status: 'DRAFT',
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.updateCouncil(councilId, { minutes: [saved], status: 'MINUTES_DRAFTED' });
+    return saved;
+  }
+
+  submitCouncilMeetingMinutesForChair(
+    councilId: string,
+    actorId: string
+  ): MeetingMinutes | undefined {
+    const council = this.getCouncilById(councilId);
+    const actor = this.getUserById(actorId);
+    const minutes = this.getCouncilMeetingMinutes(councilId);
+    if (!council || !actor || !minutes || minutes.status !== 'DRAFT') return undefined;
+
+    const secretary = council.members.find((member) => member.roleInCouncil === 'THƯ_KÝ');
+    const isOffice = actor.role === 'RESEARCH_OFFICE' || actor.role === 'ADMIN';
+    if (!isOffice && secretary?.userId !== actorId) return undefined;
+
+    const minimumSigned = this.getCommonCouncilPolicy(council.projectIds)?.minSignedEvaluationsBeforeMinutes;
+    if (minimumSigned !== undefined) {
+      const insufficientProject = council.projectIds.some((projectId) => {
+        const signedCount = (council.evaluationResults || []).filter(
+          (result) => result.projectId === projectId && result.status === 'SIGNED'
+        ).length;
+        return signedCount < minimumSigned;
+      });
+      if (insufficientProject) return undefined;
+    }
+
+    const submitted: MeetingMinutes = {
+      ...minutes,
+      status: 'PENDING_CHAIR_CONFIRMATION',
+      submittedForChairAt: new Date().toISOString(),
+      submittedForChairBy: actorId,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.updateCouncil(councilId, { minutes: [submitted], status: 'MINUTES_DRAFTED' });
+    return submitted;
+  }
+
+  requestCouncilMeetingMinutesRevision(
+    councilId: string,
+    actorId: string,
+    feedback: string
+  ): MeetingMinutes | undefined {
+    const council = this.getCouncilById(councilId);
+    const actor = this.getUserById(actorId);
+    const minutes = this.getCouncilMeetingMinutes(councilId);
+    if (!council || !actor || !minutes || minutes.status !== 'PENDING_CHAIR_CONFIRMATION') return undefined;
+
+    const chair = council.members.find((member) => member.roleInCouncil === 'CHỦ_TỊCH');
+    if (actor.role !== 'ADMIN' && chair?.userId !== actorId) return undefined;
+    if (!feedback.trim()) return undefined;
+
+    const revised: MeetingMinutes = {
+      ...minutes,
+      status: 'DRAFT',
+      chairFeedback: feedback.trim(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.updateCouncil(councilId, { minutes: [revised], status: 'MINUTES_DRAFTED' });
+    return revised;
+  }
+
+  confirmCouncilMeetingMinutes(
+    councilId: string,
+    actorId: string,
+    feedback?: string
+  ): MeetingMinutes | undefined {
+    const council = this.getCouncilById(councilId);
+    const actor = this.getUserById(actorId);
+    const minutes = this.getCouncilMeetingMinutes(councilId);
+    if (!council || !actor || !minutes || minutes.status !== 'PENDING_CHAIR_CONFIRMATION') return undefined;
+
+    const chair = council.members.find((member) => member.roleInCouncil === 'CHỦ_TỊCH');
+    if (actor.role !== 'ADMIN' && chair?.userId !== actorId) return undefined;
+
+    if (minutes.projectResults.length !== council.projectIds.length) return undefined;
+    if (council.projectIds.some((projectId) => !minutes.projectResults.some((item) => item.projectId === projectId))) {
+      return undefined;
+    }
+
+    const confirmedAt = new Date().toISOString();
+    const confirmed: MeetingMinutes = {
+      ...minutes,
+      status: 'CONFIRMED',
+      chairFeedback: feedback?.trim() || minutes.chairFeedback,
+      chairConfirmedAt: confirmedAt,
+      chairConfirmedBy: actorId,
+      updatedAt: confirmedAt,
+    };
+
+    this.updateCouncil(councilId, { minutes: [confirmed], status: 'CONCLUDED' });
+    this.applyCouncilConclusions(council, confirmed, actor);
+
+    return confirmed;
+  }
+
+  private applyCouncilConclusions(
+    council: Council,
+    minutes: MeetingMinutes,
+    actor: User
+  ): void {
+    minutes.projectResults.forEach((result) => {
+      const project = this.getProjectById(result.projectId);
+      if (!project) return;
+
+      if (council.type === 'PROPOSAL_REVIEW') {
+        const evaluation: ProposalEvaluation = {
+          id: `proposal-eval-${Date.now()}-${result.projectId}`,
+          projectId: result.projectId,
+          councilId: council.id,
+          conclusion: result.conclusion === 'RE_EVALUATE' ? 'APPROVED_WITH_REVISION' : result.conclusion,
+          averageScore: result.averageScore,
+          revisionRequirements: result.revisionRequirements || result.summaryOpinion,
+          concludedAt: minutes.chairConfirmedAt || new Date().toISOString(),
+          concludedBy: actor.id,
+        };
+
+        const proposalEvaluations = [
+          evaluation,
+          ...(project.proposalEvaluations || []).filter((item) => item.councilId !== council.id),
+        ];
+
+        const proposalStatus =
+          result.conclusion === 'APPROVED'
+            ? 'PROPOSAL_APPROVED'
+            : result.conclusion === 'REJECTED'
+              ? 'REJECTED'
+              : 'PROPOSAL_REVISION_REQUIRED';
+
+        this.updateProject(result.projectId, {
+          proposalEvaluations,
+          proposalStatus,
+          status:
+            result.conclusion === 'APPROVED'
+              ? 'WAITING_ASSIGNMENT'
+              : result.conclusion === 'REJECTED'
+                ? 'REJECTED'
+                : project.status,
+        });
+        return;
+      }
+
+      const acceptanceConclusion: AcceptanceEvaluation['conclusion'] =
+        result.conclusion === 'APPROVED'
+          ? 'ACCEPTED'
+          : result.conclusion === 'REJECTED'
+            ? 'REJECTED'
+            : 'CONDITIONALLY_ACCEPTED';
+
+      const acceptanceEvaluation: AcceptanceEvaluation = {
+        id: `acceptance-eval-${Date.now()}-${result.projectId}`,
+        projectId: result.projectId,
+        councilId: council.id,
+        conclusion: acceptanceConclusion,
+        ratingLabel: result.ratingLabel,
+        scoreTotal: result.averageScore,
+        revisionItems: result.revisionRequirements
+          ? [{
+              id: `post-acceptance-${Date.now()}-${result.projectId}`,
+              councilFeedback: result.revisionRequirements,
+              comments: result.summaryOpinion,
+              status: 'PENDING',
+            }]
+          : undefined,
+        concludedAt: minutes.chairConfirmedAt || new Date().toISOString(),
+        concludedBy: actor.id,
+      };
+
+      const acceptanceEvaluations = [
+        acceptanceEvaluation,
+        ...(project.acceptanceEvaluations || []).filter((item) => item.councilId !== council.id),
+      ];
+
+      if (acceptanceConclusion === 'ACCEPTED') {
+        this.updateProject(result.projectId, {
+          acceptanceEvaluations,
+          status: 'ACCEPTED',
+        });
+      } else if (acceptanceConclusion === 'CONDITIONALLY_ACCEPTED' && project.acceptanceDossier) {
+        this.updateProject(result.projectId, {
+          acceptanceEvaluations,
+          acceptanceDossier: {
+            ...project.acceptanceDossier,
+            postAcceptanceRevisions: [
+              ...(acceptanceEvaluation.revisionItems || []),
+              ...(project.acceptanceDossier.postAcceptanceRevisions || []),
+            ],
+          },
+        });
+      } else {
+        // Kết luận không đạt nghiệm thu được lưu tại AcceptanceEvaluation.
+        // Không dùng ProjectStatus.REJECTED vì trạng thái này thuộc vòng đời hồ sơ/đề tài trước khi giao thực hiện.
+        this.updateProject(result.projectId, {
+          acceptanceEvaluations,
+        });
+      }
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -730,13 +1139,14 @@ class MockRepository {
       return undefined;
     }
 
-    const sameTypeExists = this.decisions.some(
+    const sameTypeActiveExists = this.decisions.some(
       (item) =>
         item.projectId === decision.projectId &&
-        item.type === decision.type
+        item.type === decision.type &&
+        item.status !== 'RETURNED'
     );
 
-    if (sameTypeExists) {
+    if (sameTypeActiveExists) {
       return undefined;
     }
 
@@ -978,12 +1388,15 @@ class MockRepository {
         (project) =>
           project.proposalStatus === 'SUBMITTED' ||
           project.proposalStatus === 'UNDER_ADMIN_REVIEW' ||
-          project.proposalStatus === 'RESUBMITTED'
+          project.proposalStatus === 'RESUBMITTED' ||
+          project.proposalStatus === 'PROPOSAL_RESUBMITTED' ||
+          project.proposalStatus === 'UNDER_PROPOSAL_REVISION_REVIEW'
       ).length,
 
       revisionRequiredProposals: allProjects.filter(
         (project) =>
-          project.proposalStatus === 'REVISION_REQUIRED'
+          project.proposalStatus === 'REVISION_REQUIRED' ||
+          project.proposalStatus === 'PROPOSAL_REVISION_REQUIRED'
       ).length,
 
       waitingCouncil: allProjects.filter(
@@ -1004,7 +1417,10 @@ class MockRepository {
         (project) =>
           project.status === 'WAITING_ACCEPTANCE' ||
           project.acceptanceDossier?.status === 'SUBMITTED' ||
-          project.acceptanceDossier?.status === 'UNDER_ADMIN_REVIEW'
+          project.acceptanceDossier?.status === 'RESUBMITTED' ||
+          project.acceptanceDossier?.status === 'UNDER_ADMIN_REVIEW' ||
+          project.acceptanceDossier?.status === 'ELIGIBLE_FOR_ACCEPTANCE' ||
+          project.acceptanceDossier?.status === 'FORWARDED_TO_COUNCIL'
       ).length,
 
       acceptedProjects: allProjects.filter(

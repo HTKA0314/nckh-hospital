@@ -1,8 +1,8 @@
 import {
+  Council,
   ResearchProject,
   User,
 } from '@/lib/types';
-import { Council } from '@/lib/types';
 
 /**
  * Permission helpers
@@ -27,10 +27,8 @@ export function canReviewProposal(
 }
 
 /**
- * Chủ nhiệm chỉ được nộp lại hồ sơ của chính mình.
- *
- * State cụ thể nên được kiểm tra ở workflow/page:
- * REVISION_REQUIRED hoặc PROPOSAL_REVISION_REQUIRED.
+ * Chủ nhiệm chỉ được nộp lại hồ sơ của chính mình
+ * và đúng trạng thái được yêu cầu bổ sung/chỉnh sửa.
  */
 export function canSubmitResubmission(
   user?: User | null,
@@ -38,9 +36,16 @@ export function canSubmitResubmission(
 ): boolean {
   if (!user || !project) return false;
 
+  if (
+    user.role !== 'RESEARCHER' ||
+    user.id !== project.principalInvestigatorId
+  ) {
+    return false;
+  }
+
   return (
-    user.role === 'RESEARCHER' &&
-    user.id === project.principalInvestigatorId
+    project.proposalStatus === 'REVISION_REQUIRED' ||
+    project.proposalStatus === 'PROPOSAL_REVISION_REQUIRED'
   );
 }
 
@@ -48,27 +53,30 @@ export function canSubmitResubmission(
  * SCIENTIFIC COUNCIL
  * ======================================================= */
 
+function getCouncilMember(
+  user?: User | null,
+  council?: Council | null
+) {
+  if (!user || !council) return undefined;
+
+  return council.members.find(
+    (member) => member.userId === user.id
+  );
+}
+
 export function isCouncilMember(
   user?: User | null,
   council?: Council | null
 ): boolean {
-  if (!user || !council) return false;
-
-  return council.members.some(
-    (member) => member.userId === user.id
-  );
+  return Boolean(getCouncilMember(user, council));
 }
 
 export function isCouncilChair(
   user?: User | null,
   council?: Council | null
 ): boolean {
-  if (!user || !council) return false;
-
-  return council.members.some(
-    (member) =>
-      member.userId === user.id &&
-      member.roleInCouncil === 'CHỦ_TỊCH'
+  return (
+    getCouncilMember(user, council)?.roleInCouncil === 'CHỦ_TỊCH'
   );
 }
 
@@ -76,38 +84,54 @@ export function isCouncilSecretary(
   user?: User | null,
   council?: Council | null
 ): boolean {
-  if (!user || !council) return false;
-
-  return council.members.some(
-    (member) =>
-      member.userId === user.id &&
-      member.roleInCouncil === 'THƯ_KÝ'
+  return (
+    getCouncilMember(user, council)?.roleInCouncil === 'THƯ_KÝ'
   );
 }
 
 /**
- * Chỉ Chủ tịch hoặc Thư ký của chính Hội đồng đó
- * được ký biên bản.
+ * Thư ký lập và chỉnh sửa dự thảo biên bản.
+ * Chủ tịch không trực tiếp lập biên bản.
  */
-export function canSignMinutes(
+export function canCreateMinutes(
   user?: User | null,
   council?: Council | null
 ): boolean {
   if (!user || !council) return false;
 
   return (
-    isCouncilChair(user, council) ||
-    isCouncilSecretary(user, council)
+    isCouncilSecretary(user, council) &&
+    (
+      council.status === 'EVALUATING' ||
+      council.status === 'MINUTES_DRAFTED'
+    )
   );
 }
 
 /**
- * Lập/chỉnh biên bản cũng phải gắn với Hội đồng cụ thể.
- *
- * Nếu nghiệp vụ sau này quy định chỉ Thư ký được lập
- * thì có thể đổi hàm này thành isCouncilSecretary().
+ * Chủ tịch xác nhận kết luận/biên bản của Hội đồng.
  */
-export function canCreateMinutes(
+export function canConfirmMinutes(
+  user?: User | null,
+  council?: Council | null
+): boolean {
+  if (!user || !council) return false;
+
+  return (
+    isCouncilChair(user, council) &&
+    council.status === 'MINUTES_DRAFTED'
+  );
+}
+
+/**
+ * Quyền ký biên bản:
+ * - Thư ký ký phần Thư ký.
+ * - Chủ tịch ký phần Chủ tịch.
+ *
+ * Trạng thái cụ thể của MeetingMinutes nên tiếp tục được kiểm tra
+ * tại repository/service khi thực hiện thao tác ký.
+ */
+export function canSignMinutes(
   user?: User | null,
   council?: Council | null
 ): boolean {
@@ -120,14 +144,28 @@ export function canCreateMinutes(
 }
 
 /**
- * Thành viên Hội đồng được nộp phiếu đánh giá
- * nếu thực sự thuộc Hội đồng đó.
+ * Thành viên chỉ được đánh giá khi:
+ * - thuộc Hội đồng;
+ * - không có xung đột lợi ích;
+ * - được phép đánh giá;
+ * - Hội đồng đang ở giai đoạn có thể chấm.
  */
 export function canSubmitCouncilEvaluation(
   user?: User | null,
   council?: Council | null
 ): boolean {
-  return isCouncilMember(user, council);
+  if (!user || !council) return false;
+
+  const member = getCouncilMember(user, council);
+  if (!member) return false;
+
+  if (member.hasConflictOfInterest) return false;
+  if (member.canEvaluate === false) return false;
+
+  return (
+    council.status === 'ESTABLISHED' ||
+    council.status === 'EVALUATING'
+  );
 }
 
 /* =========================================================
@@ -184,7 +222,8 @@ export function canIssueDecision(
  * ======================================================= */
 
 /**
- * Chủ nhiệm nộp hồ sơ nghiệm thu của chính đề tài.
+ * Chủ nhiệm nộp hồ sơ nghiệm thu lần đầu khi đề tài đang thực hiện,
+ * hoặc nộp lại khi hồ sơ nghiệm thu đang yêu cầu bổ sung.
  */
 export function canSubmitAcceptanceDossier(
   user?: User | null,
@@ -192,15 +231,26 @@ export function canSubmitAcceptanceDossier(
 ): boolean {
   if (!user || !project) return false;
 
-  return (
-    user.role === 'RESEARCHER' &&
-    user.id === project.principalInvestigatorId
-  );
+  if (
+    user.role !== 'RESEARCHER' ||
+    user.id !== project.principalInvestigatorId
+  ) {
+    return false;
+  }
+
+  const firstSubmission =
+    project.status === 'IN_PROGRESS' &&
+    !project.acceptanceDossier;
+
+  const resubmission =
+    project.status === 'WAITING_ACCEPTANCE' &&
+    project.acceptanceDossier?.status === 'REVISION_REQUIRED';
+
+  return firstSubmission || resubmission;
 }
 
 /**
- * Phòng NCKH tiếp nhận và kiểm tra hành chính
- * hồ sơ nghiệm thu.
+ * Phòng NCKH tiếp nhận và kiểm tra hành chính hồ sơ nghiệm thu.
  */
 export function canReviewAcceptanceDossier(
   user?: User | null
@@ -270,8 +320,9 @@ export default {
   isCouncilMember,
   isCouncilChair,
   isCouncilSecretary,
-  canSignMinutes,
   canCreateMinutes,
+  canConfirmMinutes,
+  canSignMinutes,
   canSubmitCouncilEvaluation,
 
   canReviewEthics,

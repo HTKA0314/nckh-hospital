@@ -1,20 +1,10 @@
 import { ProjectStatus } from '@/lib/types';
 
-/**
- * Macro lifecycle của ResearchProject.
- *
- * Lưu ý:
- * - Không biểu diễn Proposal workflow ở đây.
- * - Không biểu diễn Decision workflow ở đây.
- * - Các gate nghiệp vụ phải được kiểm tra trước khi gọi transition.
- */
 export const PROJECT_TRANSITIONS: Record<
   ProjectStatus,
   readonly ProjectStatus[]
 > = {
-  DRAFT: [
-    'SUBMITTED',
-  ],
+  DRAFT: ['SUBMITTED'],
 
   SUBMITTED: [
     'WAITING_ASSIGNMENT',
@@ -42,22 +32,14 @@ export const PROJECT_TRANSITIONS: Record<
     'TERMINATED',
   ],
 
-  ACCEPTED: [
-    'RECOGNIZED',
-  ],
+  ACCEPTED: ['RECOGNIZED'],
 
-  RECOGNIZED: [
-    'CLOSED',
-  ],
+  RECOGNIZED: ['CLOSED'],
 
-  CLOSED: [
-    'ARCHIVED',
-  ],
+  CLOSED: ['ARCHIVED'],
 
   ARCHIVED: [],
-
   REJECTED: [],
-
   TERMINATED: [],
 };
 
@@ -65,5 +47,5 @@ export function canTransitionProject(
   current: ProjectStatus,
   next: ProjectStatus
 ): boolean {
-  return PROJECT_TRANSITIONS[current].includes(next);
+  return PROJECT_TRANSITIONS[current]?.includes(next) ?? false;
 }
