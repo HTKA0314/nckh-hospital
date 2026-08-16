@@ -1,76 +1,54 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { repo } from '@/lib/repository';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/ui/Toast';
 import { PageHeader } from '@/components/common/PageHeader';
 import { DataTable, ColumnDef } from '@/components/common/DataTable';
-import { FinancialSummary, FinanceStatus } from '@/lib/types';
+import { BudgetCategory, TransactionType, TransactionStatus, FinancialTransaction } from '@/lib/types';
 import { formatVND, formatDate } from '@/lib/utils';
-import { 
-  ArrowLeft, 
-  DollarSign, 
-  AlertCircle, 
-  CheckCircle2, 
-  Lock, 
-  Unlock, 
-  Briefcase, 
-  FileText,
-  FileCheck2,
-  TrendingUp,
-  Receipt,
-  Edit,
-  Plus,
-  X,
-  Printer,
-} from 'lucide-react';
+import { ArrowLeft, AlertCircle, Plus, Eye } from 'lucide-react';
+import { CreateTransactionModal } from './_components/CreateTransactionModal';
+import { TransactionDetailModal } from './_components/TransactionDetailModal';
+
+const CATEGORY_LABELS: Record<BudgetCategory, string> = {
+  REMUNERATION: 'Thù lao chất xám',
+  LAB_TESTING: 'Chi phí xét nghiệm / Cận lâm sàng',
+  CONSUMABLES: 'Vật tư tiêu hao, hóa chất',
+  CONFERENCE_TRAVEL: 'Hội thảo, công tác phí',
+  OTHER_SERVICES: 'Chi phí dịch vụ khác'
+};
+
+const STATUS_BADGES: Record<string, { text: string; bg: string; textCol: string; border: string }> = {
+  [TransactionStatus.PENDING_SCIENCE]: { text: 'Chờ P.NCKH xác nhận', bg: 'bg-amber-50', textCol: 'text-amber-700', border: 'border-amber-200' },
+  [TransactionStatus.PENDING_ACCOUNTING]: { text: 'Chờ Kế toán thẩm định', bg: 'bg-orange-50', textCol: 'text-orange-700', border: 'border-orange-200' },
+  [TransactionStatus.PENDING_DIRECTOR]: { text: 'Chờ Giám đốc duyệt', bg: 'bg-fuchsia-50', textCol: 'text-fuchsia-700', border: 'border-fuchsia-200' },
+  [TransactionStatus.APPROVED]: { text: 'Đã duyệt chứng từ', bg: 'bg-sky-50', textCol: 'text-sky-700', border: 'border-sky-200' },
+  [TransactionStatus.PAID]: { text: 'Đã chi tiền', bg: 'bg-emerald-50', textCol: 'text-emerald-700', border: 'border-emerald-200' },
+  [TransactionStatus.REJECTED]: { text: 'Bị từ chối', bg: 'bg-rose-50', textCol: 'text-rose-700', border: 'border-rose-200' }
+};
 
 export default function ProjectFinancePage({ params }: { params: { id: string } }) {
   const { currentUser } = useAuth();
-  const { success, warning, error, confirm } = useToast();
+  const { success } = useToast();
 
   const [isMounted, setIsMounted] = useState(false);
-  const [finance, setFinance] = useState<FinancialSummary | undefined>(undefined);
-  const [showEditModal, setShowEditModal] = useState(false);
-
-  // State Modal chỉnh sửa số liệu tài chính
-  const [allocatedInput, setAllocatedInput] = useState(0);
-  const [disbursedInput, setDisbursedInput] = useState(0);
-  const [settledInput, setSettledInput] = useState(0);
-  const [refundableInput, setRefundableInput] = useState(0);
+  const [dataVersion, setDataVersion] = useState(0);
+  
+  const [showCreateModal, setShowCreateModal] = useState<{ isOpen: boolean; type: TransactionType | null }>({ isOpen: false, type: null });
+  const [selectedTx, setSelectedTx] = useState<FinancialTransaction | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
-    const p = repo.getProjectById(params.id);
-    if (p) {
-      const fs = p.financialSummary || {
-        id: `fin-${p.id}`,
-        projectId: p.id,
-        fundingSource: p.fundingSource || 'NGÂN_SÁCH_BỆNH_VIỆN',
-        estimatedBudget: p.estimatedBudget || 0,
-        approvedBudget: p.approvedBudget || p.estimatedBudget || 0,
-        allocatedBudget: 0,
-        disbursedBudget: 0,
-        settledBudget: 0,
-        refundableBudget: 0,
-        status: p.financeStatus || 'PENDING',
-        hasContract: false,
-      };
-      setFinance(fs);
-      setAllocatedInput(fs.allocatedBudget || 0);
-      setDisbursedInput(fs.disbursedBudget || 0);
-      setSettledInput(fs.settledBudget || 0);
-      setRefundableInput(fs.refundableBudget || 0);
-    }
   }, [params.id]);
+
+  const project = useMemo(() => repo.getProjectById(params.id), [params.id, dataVersion]);
 
   if (!isMounted) {
     return <div className="p-8 text-center text-slate-500 text-xs font-medium">Đang tải dữ liệu tài chính đề tài...</div>;
   }
-
-  const project = repo.getProjectById(params.id);
 
   if (!project) {
     return (
@@ -84,153 +62,125 @@ export default function ProjectFinancePage({ params }: { params: { id: string } 
     );
   }
 
-  const isFinanceOfficer = currentUser?.role === 'FINANCE_OFFICER' || currentUser?.role === 'ADMIN';
+  const financialData = project.financial || {
+    totalApprovedBudget: 0,
+    totalAdvanced: 0,
+    totalSettled: 0,
+    remainingBudget: 0,
+    budgetDetails: [],
+    transactions: []
+  };
 
-  const handleUpdateFinanceStatus = (nextStatus: FinanceStatus, logText: string) => {
-    confirm({
-      title: 'Xác nhận thay đổi trạng thái tài chính',
-      message: `Bạn có chắc chắn muốn cập nhật trạng thái tài chính đề tài thành "${nextStatus}"?`,
-      confirmLabel: 'Xác nhận',
-      onConfirm: () => {
-        const currentFS = finance || {
-          id: `fin-${Date.now()}`,
-          projectId: project.id,
-          fundingSource: project.fundingSource,
-          estimatedBudget: project.estimatedBudget,
-          approvedBudget: project.approvedBudget,
-          allocatedBudget: 0,
-          disbursedBudget: 0,
-          settledBudget: 0,
-          refundableBudget: 0,
-          status: 'PENDING',
-          hasContract: false,
-        };
+  // Tính toán Dashboard Logic
+  const totalApprovedBudget = financialData.budgetDetails.reduce(
+    (sum, item) => sum + (item.approvedAmount || item.totalAmount), 
+    0
+  );
 
-        const updatedFS: FinancialSummary = {
-          ...currentFS,
-          status: nextStatus,
-        };
+  const totalAdvanced = financialData.transactions
+    .filter(t => t.type === TransactionType.ADVANCE && t.status === TransactionStatus.PAID)
+    .reduce((sum, t) => sum + t.amount, 0);
 
-        repo.updateProject(project.id, { 
-          financialSummary: updatedFS,
-          financeStatus: nextStatus
-        });
-        setFinance(updatedFS);
+  const totalSettled = financialData.transactions
+    .filter(t => t.type === TransactionType.SETTLEMENT && t.status === TransactionStatus.PAID)
+    .reduce((sum, t) => sum + t.amount, 0);
 
-        repo.addAuditLog({
-          userId: currentUser.id,
-          userFullName: currentUser.fullName,
-          userRole: currentUser.role,
-          actionCode: `FINANCE_${nextStatus}`,
-          entityType: 'FINANCE',
-          entityId: currentFS.id,
-          notes: logText,
-        });
+  const remainingBudget = totalApprovedBudget - totalAdvanced;
 
-        // Nếu chuyển sang CLOSED và đề tài đã RECOGNIZED -> Đóng đề tài
-        if (nextStatus === 'CLOSED' && project.status === 'RECOGNIZED') {
-          repo.updateProject(project.id, {
-            status: 'CLOSED',
-            statusHistory: [
-              ...(project.statusHistory || []),
-              {
-                id: `h-${Date.now()}`,
-                projectId: project.id,
-                fromStatus: project.status,
-                toStatus: 'CLOSED',
-                changedBy: currentUser.id,
-                changedByName: currentUser.fullName,
-                userRole: currentUser.role,
-                changedAt: new Date().toISOString(),
-                action: 'Đóng đề tài (Hoàn tất nghĩa vụ tài chính & Quyết toán)',
-              }
-            ]
-          });
-        }
+  const disbursementRate = totalApprovedBudget > 0 
+    ? Math.round((totalAdvanced / totalApprovedBudget) * 100) 
+    : 0;
 
-        success(`Đã cập nhật trạng thái tài chính thành ${nextStatus} thành công!`);
+  // Tính toán số dư khả dụng của từng hạng mục
+  const categoryStats = useMemo(() => {
+    const stats: Record<string, { approved: number; advanced: number; settled: number; available: number }> = {};
+    
+    // Khởi tạo
+    Object.keys(CATEGORY_LABELS).forEach(cat => {
+      stats[cat] = { approved: 0, advanced: 0, settled: 0, available: 0 };
+    });
+
+    // Cộng duyệt
+    financialData.budgetDetails.forEach(item => {
+      if (stats[item.category]) {
+        stats[item.category].approved += (item.approvedAmount || item.totalAmount);
       }
     });
-  };
 
-  const handleSaveFinancialNumbers = () => {
-    if (!finance) return;
-
-    const updatedFS: FinancialSummary = {
-      ...finance,
-      allocatedBudget: Number(allocatedInput) || 0,
-      disbursedBudget: Number(disbursedInput) || 0,
-      settledBudget: Number(settledInput) || 0,
-      refundableBudget: Number(refundableInput) || 0,
-    };
-
-    repo.updateProject(project.id, {
-      financialSummary: updatedFS,
-    });
-    setFinance(updatedFS);
-
-    repo.addAuditLog({
-      userId: currentUser.id,
-      userFullName: currentUser.fullName,
-      userRole: currentUser.role,
-      actionCode: 'UPDATE_FINANCIAL_FIGURES',
-      entityType: 'FINANCE',
-      entityId: finance.id,
-      notes: `Cập nhật số liệu quyết toán: Cấp ${formatVND(allocatedInput)}, Chi ${formatVND(disbursedInput)}, Quyết toán ${formatVND(settledInput)}`,
+    // Cộng giao dịch (chỉ tính PAID)
+    financialData.transactions.forEach(t => {
+      if (t.status === TransactionStatus.PAID && t.category && stats[t.category]) {
+        if (t.type === TransactionType.ADVANCE) stats[t.category].advanced += t.amount;
+        if (t.type === TransactionType.SETTLEMENT) stats[t.category].settled += t.amount;
+      }
     });
 
-    setShowEditModal(false);
-    success('Đã cập nhật số liệu kinh phí & quyết toán thành công!');
-  };
+    // Tính khả dụng (remaining for advance)
+    Object.keys(stats).forEach(cat => {
+      stats[cat].available = stats[cat].approved - stats[cat].advanced;
+    });
 
-  const getFinanceStatusBadge = (status?: FinanceStatus) => {
-    switch (status) {
-      case 'PENDING':
-        return <span className="bg-slate-100 text-slate-800 border-slate-200 border text-[11px] px-2.5 py-0.5 rounded-full font-bold">Chờ cấp kinh phí</span>;
-      case 'ACTIVE':
-        return <span className="bg-sky-50 text-[#0A6EBD] border-sky-200 border text-[11px] px-2.5 py-0.5 rounded-full font-bold">Đang chi tiêu</span>;
-      case 'AWAITING_FINALIZATION':
-        return <span className="bg-amber-50 text-amber-800 border-amber-200 border text-[11px] px-2.5 py-0.5 rounded-full font-bold">Đang quyết toán</span>;
-      case 'FINALIZED':
-        return <span className="bg-emerald-50 text-emerald-800 border-emerald-200 border text-[11px] px-2.5 py-0.5 rounded-full font-bold">Đã quyết toán</span>;
-      case 'CLOSED':
-        return <span className="bg-slate-900 text-white text-[11px] px-2.5 py-0.5 rounded-full font-bold">Đóng tài chính</span>;
-      default:
-        return <span className="text-slate-400 font-medium">Chưa cấu hình</span>;
-    }
-  };
+    return stats;
+  }, [financialData]);
 
-  const transactions = [
-    { id: 'tx-01', type: 'Tạm ứng đợt 1 (Theo Quyết định giao)', amount: finance?.allocatedBudget || 0, date: formatDate(project.approvedAt || project.startDate || '2026-03-25'), status: 'Đã thực hiện' },
-    { id: 'tx-02', type: 'Chi mua sinh phẩm & hóa chất xét nghiệm', amount: (finance?.disbursedBudget || 0) * 0.6, date: '15/05/2026', status: 'Đã thực hiện' },
-    { id: 'tx-03', type: 'Chi thù lao nhóm nghiên cứu & thu thập mẫu', amount: (finance?.disbursedBudget || 0) * 0.4, date: '28/08/2026', status: 'Đã thực hiện' },
-  ];
+  const canCreateRequest = currentUser?.id === project.principalInvestigatorId || currentUser?.role === 'ADMIN';
 
-  const txColumns: ColumnDef<any>[] = [
+  // Columns for Transactions
+  const txColumns: ColumnDef<FinancialTransaction>[] = [
     {
-      key: 'type',
-      header: 'Nội dung khoản mục chi tiêu',
-      render: (row) => <span className="font-bold text-slate-900">{row.type}</span>,
+      key: 'createdAt',
+      header: 'Ngày lập',
+      render: (row) => <span className="font-mono text-slate-500">{formatDate(row.createdAt as string)}</span>,
     },
     {
-      key: 'date',
-      header: 'Ngày thực hiện',
-      render: (row) => <span className="font-mono text-slate-500">{row.date}</span>,
+      key: 'type',
+      header: 'Phân loại',
+      render: (row) => (
+        <span className="font-bold text-slate-800">
+          {row.type === TransactionType.ADVANCE ? 'Phiếu tạm ứng' : row.type === TransactionType.SETTLEMENT ? 'Phiếu quyết toán' : row.type}
+        </span>
+      ),
+    },
+    {
+      key: 'category',
+      header: 'Hạng mục chi phí',
+      render: (row) => <span className="text-slate-600">{row.category ? CATEGORY_LABELS[row.category] : '---'}</span>,
     },
     {
       key: 'amount',
-      header: 'Số tiền thực chi',
-      render: (row) => <span className="font-mono font-bold text-slate-800">{formatVND(row.amount)}</span>,
+      header: 'Số tiền',
+      render: (row) => <span className="font-mono font-bold text-[#0A6EBD]">{formatVND(row.amount)}</span>,
     },
     {
       key: 'status',
       header: 'Trạng thái',
-      render: (row) => <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-200">{row.status}</span>,
+      render: (row) => {
+        const s = STATUS_BADGES[row.status as string];
+        if (!s) return null;
+        return (
+          <span className={`px-2 py-0.5 text-[10px] font-bold rounded border uppercase ${s.bg} ${s.textCol} ${s.border}`}>
+            {s.text}
+          </span>
+        );
+      },
     },
+    {
+      key: 'actions',
+      header: '',
+      render: (row) => (
+        <button 
+          onClick={() => setSelectedTx(row)}
+          className="p-1 text-slate-400 hover:text-[#0A6EBD] transition"
+          title="Xem chi tiết / Phê duyệt"
+        >
+          <Eye className="w-4 h-4" />
+        </button>
+      ),
+    }
   ];
 
   return (
-    <div className="w-full space-y-4 pb-16 text-slate-800 text-xs">
+    <div className="w-full space-y-6 pb-16 text-slate-800 text-xs">
       <PageHeader
         title="Quản lý Tài chính & Quyết toán"
         description={`Đề tài: ${project.title}`}
@@ -242,220 +192,132 @@ export default function ProjectFinancePage({ params }: { params: { id: string } 
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Chi tiết đề tài
             </Link>
-
-            {isFinanceOfficer && (
-              <button
-                type="button"
-                onClick={() => setShowEditModal(true)}
-                className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg transition shadow-2xs cursor-pointer"
-              >
-                <Edit className="w-3.5 h-3.5 text-slate-500" /> Cập nhật số liệu
-              </button>
-            )}
-
-            {isFinanceOfficer && finance?.status === 'PENDING' && (
-              <button
-                onClick={() => handleUpdateFinanceStatus('ACTIVE', 'Cấp kinh phí tạm ứng đợt 1 và kích hoạt trạng thái chi tiêu')}
-                className="inline-flex items-center gap-1.5 bg-[#0A6EBD] hover:bg-[#085896] text-white text-xs font-bold px-3.5 py-1.5 rounded-lg shadow-2xs transition cursor-pointer"
-              >
-                <Unlock className="w-3.5 h-3.5" /> Cấp kinh phí & Kích hoạt
-              </button>
-            )}
-
-            {isFinanceOfficer && finance?.status === 'ACTIVE' && (
-              <button
-                onClick={() => handleUpdateFinanceStatus('AWAITING_FINALIZATION', 'Bắt đầu thủ tục quyết toán tài chính đề tài')}
-                className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg shadow-2xs transition cursor-pointer"
-              >
-                <Receipt className="w-3.5 h-3.5" /> Bắt đầu quyết toán
-              </button>
-            )}
-
-            {isFinanceOfficer && finance?.status === 'AWAITING_FINALIZATION' && (
-              <button
-                onClick={() => handleUpdateFinanceStatus('FINALIZED', 'Phê duyệt báo cáo quyết toán tài chính đề tài')}
-                className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg shadow-2xs transition cursor-pointer"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" /> Duyệt quyết toán
-              </button>
-            )}
-
-            {isFinanceOfficer && finance?.status === 'FINALIZED' && (
-              <button
-                onClick={() => handleUpdateFinanceStatus('CLOSED', 'Đóng hoàn toàn các nghĩa vụ tài chính đề tài')}
-                className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg shadow-2xs transition cursor-pointer"
-              >
-                <Lock className="w-3.5 h-3.5" /> Đóng tài chính đề tài
-              </button>
-            )}
           </div>
         }
       />
-
-      {/* KPI Financial stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div className="bg-white border border-slate-200 p-3.5 rounded-xl shadow-2xs">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide block">Tổng Kinh phí duyệt</span>
-          <p className="text-lg font-bold text-slate-900 font-mono mt-0.5">
-            {formatVND(project.approvedBudget || project.estimatedBudget)}
-          </p>
-          <span className="text-[10px] text-slate-400 font-semibold uppercase mt-0.5 block">Nguồn: {project.fundingSource}</span>
+      
+      {/* SECTION 1: FINANCIAL DASHBOARD */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="p-4 bg-white rounded-xl shadow-sm border border-slate-200">
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Tổng kinh phí phê duyệt</p>
+          <p className="text-xl font-mono font-bold text-slate-900 mt-1">{formatVND(totalApprovedBudget)}</p>
         </div>
-
-        <div className="bg-white border border-slate-200 p-3.5 rounded-xl shadow-2xs">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide block">Kinh phí đã cấp</span>
-          <p className="text-lg font-bold text-[#0A6EBD] font-mono mt-0.5">
-            {formatVND(finance?.allocatedBudget || 0)}
-          </p>
-          <span className="text-[10px] text-slate-400 font-semibold uppercase mt-0.5 block">
-            {finance?.allocatedBudget && (project.approvedBudget || project.estimatedBudget)
-              ? `${Math.round(((finance.allocatedBudget / (project.approvedBudget || project.estimatedBudget)) * 100))}% tổng ngân sách`
-              : '0% tổng ngân sách'}
-          </span>
-        </div>
-
-        <div className="bg-white border border-slate-200 p-3.5 rounded-xl shadow-2xs">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide block">Kinh phí đã thực chi</span>
-          <p className="text-lg font-bold text-amber-700 font-mono mt-0.5">
-            {formatVND(finance?.disbursedBudget || 0)}
-          </p>
-          <span className="text-[10px] text-slate-400 font-semibold uppercase mt-0.5 block">
-            {finance?.disbursedBudget && finance?.allocatedBudget 
-              ? `${Math.round(((finance.disbursedBudget / finance.allocatedBudget) * 100))}% kinh phí đã cấp`
-              : '0% kinh phí đã cấp'}
-          </span>
-        </div>
-
-        <div className="bg-white border border-slate-200 p-3.5 rounded-xl shadow-2xs">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide block">Trạng thái tài chính</span>
-          <div className="mt-1.5">
-            {getFinanceStatusBadge(finance?.status)}
+        <div className="p-4 bg-white rounded-xl shadow-sm border border-slate-200">
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Lũy kế đã tạm ứng</p>
+          <p className="text-xl font-mono font-bold text-[#0A6EBD] mt-1">{formatVND(totalAdvanced)}</p>
+          <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2.5">
+            <div className="bg-[#0A6EBD] h-1.5 rounded-full" style={{ width: `${Math.min(disbursementRate, 100)}%` }}></div>
           </div>
+          <p className="text-[10px] text-slate-400 mt-1 font-semibold">Đã giải ngân {disbursementRate}%</p>
+        </div>
+        <div className="p-4 bg-white rounded-xl shadow-sm border border-slate-200">
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Lũy kế đã quyết toán</p>
+          <p className="text-xl font-mono font-bold text-emerald-600 mt-1">{formatVND(totalSettled)}</p>
+        </div>
+        <div className="p-4 bg-white rounded-xl shadow-sm border border-slate-200">
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Kinh phí còn lại</p>
+          <p className="text-xl font-mono font-bold text-amber-600 mt-1">{formatVND(remainingBudget)}</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Left column: Detail info */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
-          <h3 className="text-xs font-bold text-slate-900 border-b border-slate-100 pb-2 uppercase tracking-wide flex items-center gap-1.5 select-none">
-            <Briefcase className="w-4 h-4 text-[#0A6EBD]" />
-            <span>Thông tin Tổng hợp Quyết toán</span>
-          </h3>
-
-          <div className="space-y-2.5 text-xs font-medium">
-            <div className="flex justify-between border-b border-slate-50 pb-1.5">
-              <span className="text-slate-500">Đã cấp / Tạm ứng:</span>
-              <strong className="text-slate-800 font-mono">{formatVND(finance?.allocatedBudget || 0)}</strong>
-            </div>
-            <div className="flex justify-between border-b border-slate-50 pb-1.5">
-              <span className="text-slate-500">Đã thực chi:</span>
-              <strong className="text-slate-800 font-mono">{formatVND(finance?.disbursedBudget || 0)}</strong>
-            </div>
-            <div className="flex justify-between border-b border-slate-50 pb-1.5">
-              <span className="text-slate-500">Đã quyết toán:</span>
-              <strong className="text-emerald-700 font-mono font-bold">{formatVND(finance?.settledBudget || 0)}</strong>
-            </div>
-            <div className="flex justify-between border-b border-slate-50 pb-1.5">
-              <span className="text-slate-500">Kinh phí thu hồi (nếu dư):</span>
-              <strong className="text-rose-700 font-mono font-bold">{formatVND(finance?.refundableBudget || 0)}</strong>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Hợp đồng nghiên cứu:</span>
-              <strong className="text-slate-800">{finance?.hasContract ? 'Có (Cần thanh lý)' : 'Không (Theo Quyết định giao)'}</strong>
-            </div>
+      {/* SECTION 2 & 3: DETAILS & TRANSACTIONS */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        
+        {/* Bảng Chi tiết Dự toán */}
+        <div className="xl:col-span-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
+          <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+            <h3 className="text-sm font-bold text-slate-800">Cơ cấu Dự toán đã phê duyệt</h3>
+          </div>
+          <div className="p-4 space-y-4 flex-1">
+            {Object.entries(CATEGORY_LABELS).map(([catKey, label]) => {
+              const stats = categoryStats[catKey];
+              if (stats.approved === 0) return null; // Only show non-zero categories
+              
+              const usedPercentage = stats.approved > 0 ? Math.round((stats.advanced / stats.approved) * 100) : 0;
+              
+              return (
+                <div key={catKey} className="border border-slate-100 rounded-lg p-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="font-bold text-slate-700">{label}</p>
+                    <p className="font-mono font-bold text-slate-900">{formatVND(stats.approved)}</p>
+                  </div>
+                  <div className="flex justify-between text-slate-500 text-[10px] mb-1.5">
+                    <span>Đã ứng: <span className="font-mono text-slate-700 font-bold">{formatVND(stats.advanced)}</span></span>
+                    <span>Khả dụng: <span className="font-mono text-[#0A6EBD] font-bold">{formatVND(stats.available)}</span></span>
+                  </div>
+                  <div className="w-full bg-slate-100 h-1.5 rounded-full">
+                    <div className={`h-1.5 rounded-full ${usedPercentage >= 100 ? 'bg-rose-500' : 'bg-amber-400'}`} style={{ width: `${Math.min(usedPercentage, 100)}%` }}></div>
+                  </div>
+                </div>
+              );
+            })}
+            
+            {financialData.budgetDetails.length === 0 && (
+              <div className="text-center py-8 text-slate-400">
+                <p>Chưa có chi tiết dự toán.</p>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Right column: Expense ledger list */}
-        <div className="lg:col-span-2 space-y-2.5">
-          <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide flex items-center gap-1.5 select-none">
-            <Receipt className="w-4 h-4 text-[#0A6EBD]" />
-            <span>Nhật ký thanh quyết toán / Tạm ứng đề tài</span>
-          </h3>
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+        {/* Nhật ký Giao dịch */}
+        <div className="xl:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-full">
+          <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+            <h3 className="text-sm font-bold text-slate-800">Nhật ký Phiếu yêu cầu tài chính</h3>
+            
+            {canCreateRequest && (
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setShowCreateModal({ isOpen: true, type: TransactionType.ADVANCE })}
+                  className="bg-white border border-[#0A6EBD] text-[#0A6EBD] hover:bg-blue-50 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition shadow-2xs"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Tạm ứng
+                </button>
+                <button 
+                  onClick={() => setShowCreateModal({ isOpen: true, type: TransactionType.SETTLEMENT })}
+                  className="bg-[#0A6EBD] hover:bg-[#085896] text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition shadow-2xs"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Quyết toán
+                </button>
+              </div>
+            )}
+          </div>
+          
+          <div className="flex-1 p-0">
             <DataTable
               columns={txColumns}
-              data={transactions}
+              data={financialData.transactions.slice().reverse()}
               rowKey={(row) => row.id}
-              emptyTitle="Không có giao dịch nào"
-              emptyDescription="Đề tài chưa phát sinh bất kỳ khoản giải ngân hoặc chi tiêu nào được duyệt."
+              emptyTitle="Chưa có giao dịch"
+              emptyDescription="Chủ nhiệm đề tài chưa tạo phiếu tạm ứng hoặc quyết toán nào."
             />
           </div>
         </div>
       </div>
 
-      {/* ── MODAL CẬP NHẬT SỐ LIỆU TÀI CHÍNH ── */}
-      {showEditModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 select-none">
-          <div className="bg-white rounded-2xl max-w-md w-full p-5 border border-slate-200 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150 text-xs">
-            <div className="flex justify-between items-center border-b pb-2.5">
-              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
-                <DollarSign className="w-4 h-4 text-[#0A6EBD]" />
-                Cập nhật số liệu giải ngân & Quyết toán
-              </h3>
-              <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer">✕</button>
-            </div>
+      {showCreateModal.isOpen && showCreateModal.type && (
+        <CreateTransactionModal
+          project={project}
+          type={showCreateModal.type}
+          onClose={() => setShowCreateModal({ isOpen: false, type: null })}
+          onSuccess={() => {
+            setShowCreateModal({ isOpen: false, type: null });
+            setDataVersion(v => v + 1); // trigger reload
+          }}
+        />
+      )}
 
-            <div className="space-y-3">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Kinh phí đã cấp / Tạm ứng (VND) *</label>
-                <input
-                  type="number"
-                  value={allocatedInput}
-                  onChange={(e) => setAllocatedInput(Number(e.target.value))}
-                  className="w-full p-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900 text-xs outline-none focus:border-[#0A6EBD]"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Kinh phí đã thực chi (VND) *</label>
-                <input
-                  type="number"
-                  value={disbursedInput}
-                  onChange={(e) => setDisbursedInput(Number(e.target.value))}
-                  className="w-full p-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900 text-xs outline-none focus:border-[#0A6EBD]"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Kinh phí đã phê duyệt quyết toán (VND)</label>
-                <input
-                  type="number"
-                  value={settledInput}
-                  onChange={(e) => setSettledInput(Number(e.target.value))}
-                  className="w-full p-2 border border-slate-300 rounded-lg font-mono font-bold text-emerald-700 text-xs outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Kinh phí thu hồi hoàn trả (nếu có)</label>
-                <input
-                  type="number"
-                  value={refundableInput}
-                  onChange={(e) => setRefundableInput(Number(e.target.value))}
-                  className="w-full p-2 border border-slate-300 rounded-lg font-mono font-bold text-rose-600 text-xs outline-none focus:border-rose-400"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t">
-              <button
-                type="button"
-                onClick={() => setShowEditModal(false)}
-                className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveFinancialNumbers}
-                className="px-4 py-1.5 bg-[#0A6EBD] hover:bg-[#085896] text-white font-bold rounded-lg shadow-2xs cursor-pointer transition"
-              >
-                Lưu số liệu
-              </button>
-            </div>
-          </div>
-        </div>
+      {selectedTx && (
+        <TransactionDetailModal
+          transaction={selectedTx}
+          projectTitle={project.title}
+          projectCode={project.projectCode || project.proposalCode}
+          onClose={() => setSelectedTx(null)}
+          onSuccess={() => {
+            setSelectedTx(null);
+            setDataVersion(v => v + 1); // trigger reload
+          }}
+        />
       )}
     </div>
   );

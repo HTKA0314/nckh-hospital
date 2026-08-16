@@ -53,25 +53,25 @@ export const WORKFLOW_STEP_NAMES: Record<number, string> = {
 };
 
 const TERMINAL_PROJECT_STATUSES: ProjectStatus[] = [
-  'CLOSED',
-  'ARCHIVED',
+  'COMPLETED',
+  'COMPLETED',
 ];
 
 const EXECUTION_OR_LATER_STATUSES: ProjectStatus[] = [
   'IN_PROGRESS',
-  'SUSPENDED',
-  'WAITING_ACCEPTANCE',
-  'ACCEPTED',
-  'RECOGNIZED',
-  'CLOSED',
-  'ARCHIVED',
+  'EXTENSION_REQUESTED',
+  'CLOSING_SUBMITTED',
+  'COMPLETED',
+  'COMPLETED',
+  'COMPLETED',
+  'COMPLETED',
 ];
 
 const ACCEPTANCE_OR_LATER_STATUSES: ProjectStatus[] = [
-  'ACCEPTED',
-  'RECOGNIZED',
-  'CLOSED',
-  'ARCHIVED',
+  'COMPLETED',
+  'COMPLETED',
+  'COMPLETED',
+  'COMPLETED',
 ];
 
 function hasIssuedDecision(
@@ -114,14 +114,13 @@ function areRequiredDocumentsValid(
 ): boolean {
   return docs.every((doc) => !doc.required || doc.uploaded);
 }
-
 function finalizeStep(
   step: Omit<StepState, 'requiredDocuments'> & {
     requiredDocuments: StepState['requiredDocuments'];
   }
 ): StepState {
   if (
-    step.status === 'COMPLETED' &&
+    step.status === 'CURRENT' &&
     !areRequiredDocumentsValid(step.requiredDocuments)
   ) {
     return {
@@ -185,7 +184,7 @@ function resolveStep2(project: ResearchProject, policy: WorkflowPolicy): StepSta
       'PROPOSAL_RESUBMITTED',
       'UNDER_PROPOSAL_REVISION_REVIEW',
       'PROPOSAL_APPROVED',
-      'REJECTED',
+      'SCREENING_FAILED',
     ].includes(project.proposalStatus as ProposalStatus)
   ) {
     status = 'COMPLETED';
@@ -322,7 +321,7 @@ function resolveStep6(project: ResearchProject, policy: WorkflowPolicy): StepSta
 
   const ethicsStatus = project.ethicsStatus as EthicsStatus;
 
-  if (!policy.requiresEthicsReview || ethicsStatus === 'NOT_REQUIRED') {
+  if (!policy.requiresEthicsReview || ethicsStatus === 'NOT_REQUIRED' || ethicsStatus === 'EXEMPTED') {
     return {
       stepNumber: 6,
       title: WORKFLOW_STEP_NAMES[6],
@@ -351,7 +350,7 @@ function resolveStep6(project: ResearchProject, policy: WorkflowPolicy): StepSta
     [
       'ETHICS_REJECTED',
       'EXPIRED',
-      'SUSPENDED',
+      'EXTENSION_REQUESTED',
       'WITHDRAWN',
       'TERMINATED',
     ].includes(ethicsStatus)
@@ -377,10 +376,11 @@ function resolveStep7(project: ResearchProject, policy: WorkflowPolicy): StepSta
   if (assignmentIssued || EXECUTION_OR_LATER_STATUSES.includes(project.status)) {
     status = 'COMPLETED';
   } else if (
-    project.status === 'WAITING_ASSIGNMENT' &&
+    project.status === 'APPROVED_PENDING_CONTRACT' &&
     (
       !policy.requiresEthicsReview ||
       project.ethicsStatus === 'NOT_REQUIRED' ||
+      project.ethicsStatus === 'EXEMPTED' ||
       project.ethicsStatus === 'ETHICS_APPROVED'
     )
   ) {
@@ -402,17 +402,17 @@ function resolveStep8(project: ResearchProject, policy: WorkflowPolicy): StepSta
 
   if (
     [
-      'WAITING_ACCEPTANCE',
-      'ACCEPTED',
-      'RECOGNIZED',
-      'CLOSED',
-      'ARCHIVED',
+      'CLOSING_SUBMITTED',
+      'COMPLETED',
+      'COMPLETED',
+      'COMPLETED',
+      'COMPLETED',
     ].includes(project.status)
   ) {
     status = 'COMPLETED';
   } else if (
     project.status === 'IN_PROGRESS' ||
-    project.status === 'SUSPENDED'
+    project.status === 'EXTENSION_REQUESTED'
   ) {
     status = 'CURRENT';
   }
@@ -432,17 +432,17 @@ function resolveStep9(project: ResearchProject, policy: WorkflowPolicy): StepSta
 
   if (
     [
-      'WAITING_ACCEPTANCE',
-      'ACCEPTED',
-      'RECOGNIZED',
-      'CLOSED',
-      'ARCHIVED',
+      'CLOSING_SUBMITTED',
+      'COMPLETED',
+      'COMPLETED',
+      'COMPLETED',
+      'COMPLETED',
     ].includes(project.status)
   ) {
     status = 'COMPLETED';
   } else if (
     project.status === 'IN_PROGRESS' ||
-    project.status === 'SUSPENDED'
+    project.status === 'EXTENSION_REQUESTED'
   ) {
     status = 'CURRENT';
   } else if (project.status === 'TERMINATED') {
@@ -465,7 +465,7 @@ function resolveStep10(project: ResearchProject, policy: WorkflowPolicy): StepSt
 
   if (ACCEPTANCE_OR_LATER_STATUSES.includes(project.status)) {
     status = 'COMPLETED';
-  } else if (project.status === 'WAITING_ACCEPTANCE') {
+  } else if (project.status === 'CLOSING_SUBMITTED') {
     if (dossierStatus === 'REVISION_REQUIRED') {
       status = 'REVISION_REQUIRED';
     } else if (dossierStatus === 'FORWARDED_TO_COUNCIL') {
@@ -491,15 +491,15 @@ function resolveStep11(project: ResearchProject, policy: WorkflowPolicy): StepSt
 
   if (
     [
-      'ACCEPTED',
-      'RECOGNIZED',
-      'CLOSED',
-      'ARCHIVED',
+      'COMPLETED',
+      'COMPLETED',
+      'COMPLETED',
+      'COMPLETED',
     ].includes(project.status)
   ) {
     status = 'COMPLETED';
   } else if (
-    project.status === 'WAITING_ACCEPTANCE' &&
+    project.status === 'CLOSING_SUBMITTED' &&
     dossierStatus === 'FORWARDED_TO_COUNCIL'
   ) {
     status = 'CURRENT';
@@ -520,13 +520,13 @@ function resolveStep12(project: ResearchProject, policy: WorkflowPolicy): StepSt
 
   if (
     [
-      'RECOGNIZED',
-      'CLOSED',
-      'ARCHIVED',
+      'COMPLETED',
+      'COMPLETED',
+      'COMPLETED',
     ].includes(project.status)
   ) {
     status = 'COMPLETED';
-  } else if (project.status === 'ACCEPTED') {
+  } else if (project.status === 'COMPLETED') {
     status = hasPendingPostAcceptanceRevision(project)
       ? 'CURRENT'
       : 'NOT_APPLICABLE';
@@ -553,11 +553,11 @@ function resolveStep13(project: ResearchProject, policy: WorkflowPolicy): StepSt
 
   if (
     recognitionIssued ||
-    ['RECOGNIZED', 'CLOSED', 'ARCHIVED'].includes(project.status)
+    ['COMPLETED', 'COMPLETED', 'COMPLETED'].includes(project.status)
   ) {
     status = 'COMPLETED';
   } else if (
-    project.status === 'ACCEPTED' &&
+    project.status === 'COMPLETED' &&
     !hasPendingPostAcceptanceRevision(project)
   ) {
     status = 'CURRENT';
@@ -578,7 +578,7 @@ function resolveStep14(project: ResearchProject, policy: WorkflowPolicy): StepSt
 
   if (TERMINAL_PROJECT_STATUSES.includes(project.status)) {
     status = 'COMPLETED';
-  } else if (project.status === 'RECOGNIZED') {
+  } else if (project.status === 'COMPLETED') {
     status = 'CURRENT';
   }
 

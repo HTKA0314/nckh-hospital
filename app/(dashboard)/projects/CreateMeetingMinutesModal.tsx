@@ -51,7 +51,7 @@ export function CreateMeetingMinutesModal({
   const [avgScore, setAvgScore] = useState('85.0');
   const [validVotes, setValidVotes] = useState('5');
   const [invalidVotes, setInvalidVotes] = useState('0');
-  const [conclusion, setConclusion] = useState<'APPROVED' | 'APPROVED_WITH_REVISION' | 'REJECTED' | 'RE_EVALUATE'>('APPROVED_WITH_REVISION');
+  const [conclusion, setConclusion] = useState<'APPROVED' | 'APPROVED_WITH_REVISION' | 'SCREENING_FAILED' | 'RE_EVALUATE'>('APPROVED_WITH_REVISION');
   const [summaryOpinions, setSummaryOpinions] = useState(
     'Đề tài có tính thời sự và khả năng ứng dụng thực tiễn cao tại bệnh viện. Đề nghị Chủ nhiệm làm rõ thêm tiêu chuẩn chọn mẫu bệnh nhân và bổ sung dự toán chi tiết.'
   );
@@ -76,20 +76,34 @@ export function CreateMeetingMinutesModal({
       const minutesRecord: MeetingMinutes = {
         id: `min-${Date.now()}`,
         councilId,
-        projectId,
         meetingDate,
         location,
         secretaryId: currentUser?.id || '',
         secretaryName: currentUser?.fullName || 'Thư ký Hội đồng',
         chairId: 'chair-id',
         chairName: 'Chủ tịch Hội đồng',
-        attendeesCount: Number(presentMembers) || 5,
+        attendance: [
+          {
+            councilMemberId: currentUser?.id || 'sec-id',
+            userId: currentUser?.id || 'sec-id',
+            attended: true,
+            eligibleToVote: true,
+          },
+        ],
         summaryOpinions,
-        conclusion,
-        averageScore: Number(avgScore) || 85.0,
-        passVoteCount: Number(validVotes) || 5,
-        totalVoteCount: Number(totalMembers) || 5,
+        projectResults: [
+          {
+            projectId,
+            conclusion,
+            summaryOpinion: summaryOpinions,
+            averageScore: Number(avgScore) || 85.0,
+            passVoteCount: Number(validVotes) || 5,
+            totalVoteCount: Number(totalMembers) || 5,
+          },
+        ],
         status: 'CONFIRMED',
+        createdAt: new Date().toISOString(),
+        createdBy: currentUser?.id || 'system',
       };
 
       const council = repo.getCouncilById(councilId);
@@ -139,37 +153,39 @@ export function CreateMeetingMinutesModal({
 
         {/* Nội dung Biên bản chuẩn Hành chính */}
         <div className="flex-1 overflow-y-auto p-6 bg-slate-100/60">
-          <div className="bg-white p-8 border border-slate-300 rounded-xl shadow-xs max-w-3xl mx-auto space-y-6 text-slate-800">
+          <div className="bg-white p-12 border border-slate-400 max-w-3xl mx-auto space-y-6 text-black" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
             
             {/* Header Quốc hiệu / Tiêu ngữ */}
-            <div className="grid grid-cols-2 gap-4 pb-4 border-b border-slate-200">
-              <div className="text-center font-bold">
-                <p className="uppercase">{agency}</p>
-                <p className="text-[11px] uppercase text-[#0A6EBD]">HỘI ĐỒNG KHOA HỌC & CÔNG NGHỆ</p>
+            <div className="flex justify-between items-start border-b border-black pb-4 text-xs font-serif leading-tight">
+              <div className="text-center w-[45%] font-bold">
+                <p className="uppercase text-[12px]">{agency}</p>
+                <p className="uppercase text-[11.5px]">HỘI ĐỒNG KHOA HỌC & CÔNG NGHỆ</p>
+                <p className="text-[11px] leading-none mt-0.5">——————</p>
               </div>
-              <div className="text-center">
-                <p className="font-bold uppercase">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
-                <p className="font-bold text-[11px]">Độc lập - Tự do - Hạnh phúc</p>
-                <p className="italic text-[11px] text-slate-500 mt-1">
+              <div className="text-center w-[50%]">
+                <p className="font-bold uppercase text-[12px]">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
+                <p className="font-bold text-[12px]">Độc lập - Tự do - Hạnh phúc</p>
+                <p className="text-[11px] leading-none mt-0.5">————————————</p>
+                <p className="italic text-[11.5px] mt-2">
                   Hà Nội, ngày {new Date(meetingDate).getDate()} tháng {new Date(meetingDate).getMonth() + 1} năm {new Date(meetingDate).getFullYear()}
                 </p>
               </div>
             </div>
 
             {/* Tiêu đề Biên bản */}
-            <div className="text-center space-y-1">
-              <h3 className="text-base font-bold uppercase text-slate-900">BIÊN BẢN HỌP HỘI ĐỒNG ĐÁNH GIÁ</h3>
-              <h4 className="text-xs font-bold uppercase text-slate-700">THUYẾT MINH ĐỀ TÀI KHOA HỌC VÀ CÔNG NGHỆ CẤP CƠ SỞ</h4>
+            <div className="text-center py-2">
+              <h3 className="text-base font-bold uppercase">BIÊN BẢN HỌP HỘI ĐỒNG ĐÁNH GIÁ</h3>
+              <h4 className="text-xs font-bold uppercase">THUYẾT MINH ĐỀ TÀI KHOA HỌC VÀ CÔNG NGHỆ CẤP CƠ SỞ</h4>
             </div>
 
             {/* Các trường thông tin */}
-            <div className="space-y-4 font-medium text-slate-850">
+            <div className="space-y-4 font-medium">
               <div className="flex items-start gap-3">
                 <label className="font-bold whitespace-nowrap pt-1 w-44">1. Tên đề tài:</label>
                 <textarea
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="flex-1 w-full border-b border-dotted border-slate-400 bg-transparent font-bold text-slate-900 focus:outline-none focus:border-[#0A6EBD] resize-none"
+                  className="flex-1 w-full border-b border-dotted border-slate-400 bg-transparent font-bold text-black focus:outline-none focus:border-black resize-none"
                   rows={2}
                 />
               </div>
@@ -180,7 +196,7 @@ export function CreateMeetingMinutesModal({
                   type="text"
                   value={pi}
                   onChange={(e) => setPi(e.target.value)}
-                  className="flex-1 border-b border-dotted border-slate-400 bg-transparent font-bold text-slate-900 focus:outline-none focus:border-[#0A6EBD]"
+                  className="flex-1 border-b border-dotted border-slate-400 bg-transparent font-bold text-black focus:outline-none focus:border-black"
                 />
               </div>
 
@@ -190,7 +206,7 @@ export function CreateMeetingMinutesModal({
                   type="text"
                   value={decisionNum}
                   onChange={(e) => setDecisionNum(e.target.value)}
-                  className="flex-1 border-b border-dotted border-slate-400 bg-transparent font-mono focus:outline-none focus:border-[#0A6EBD]"
+                  className="flex-1 border-b border-dotted border-slate-400 bg-transparent focus:outline-none focus:border-black"
                 />
               </div>
 
@@ -200,7 +216,7 @@ export function CreateMeetingMinutesModal({
                   type="text"
                   value={agency}
                   onChange={(e) => setAgency(e.target.value)}
-                  className="flex-1 border-b border-dotted border-slate-400 bg-transparent focus:outline-none focus:border-[#0A6EBD]"
+                  className="flex-1 border-b border-dotted border-slate-400 bg-transparent focus:outline-none focus:border-black"
                 />
               </div>
 
@@ -211,7 +227,7 @@ export function CreateMeetingMinutesModal({
                     type="date"
                     value={meetingDate}
                     onChange={(e) => setMeetingDate(e.target.value)}
-                    className="border border-slate-300 rounded-lg px-2.5 py-1 bg-white font-mono focus:border-[#0A6EBD]"
+                    className="border border-slate-300 px-2.5 py-1 bg-white focus:border-black"
                   />
                 </div>
                 <div className="flex items-center gap-3">
@@ -220,7 +236,7 @@ export function CreateMeetingMinutesModal({
                     type="text"
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
-                    className="flex-1 border-b border-dotted border-slate-400 bg-transparent focus:outline-none focus:border-[#0A6EBD]"
+                    className="flex-1 border-b border-dotted border-slate-400 bg-transparent focus:outline-none focus:border-black"
                   />
                 </div>
               </div>
@@ -228,14 +244,14 @@ export function CreateMeetingMinutesModal({
               {/* Thành viên tham dự */}
               <div className="space-y-2 pt-2">
                 <label className="font-bold block">7. Thành viên của Hội đồng:</label>
-                <div className="flex items-center gap-6 pl-4 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                <div className="flex items-center gap-6 pl-4 border-b border-t border-black bg-slate-50/10 p-2">
                   <div className="flex items-center gap-2">
                     <span>Tổng số:</span>
                     <input
                       type="text"
                       value={totalMembers}
                       onChange={(e) => setTotalMembers(e.target.value)}
-                      className="w-12 border-b border-dotted border-slate-400 font-mono font-bold text-center bg-transparent focus:outline-none"
+                      className="w-12 border-b border-dotted border-slate-400 font-bold text-center bg-transparent focus:outline-none"
                     />
                   </div>
                   <div className="flex items-center gap-2">
@@ -244,7 +260,7 @@ export function CreateMeetingMinutesModal({
                       type="text"
                       value={presentMembers}
                       onChange={(e) => setPresentMembers(e.target.value)}
-                      className="w-12 border-b border-dotted border-slate-400 font-mono font-bold text-center bg-transparent focus:outline-none text-emerald-700"
+                      className="w-12 border-b border-dotted border-slate-400 font-bold text-center bg-transparent focus:outline-none"
                     />
                   </div>
                   <div className="flex items-center gap-2">
@@ -253,7 +269,7 @@ export function CreateMeetingMinutesModal({
                       type="text"
                       value={absentMembers}
                       onChange={(e) => setAbsentMembers(e.target.value)}
-                      className="w-12 border-b border-dotted border-slate-400 font-mono font-bold text-center bg-transparent focus:outline-none text-rose-600"
+                      className="w-12 border-b border-dotted border-slate-400 font-bold text-center bg-transparent focus:outline-none"
                     />
                   </div>
                 </div>
@@ -266,19 +282,19 @@ export function CreateMeetingMinutesModal({
                   type="text"
                   value={guests}
                   onChange={(e) => setGuests(e.target.value)}
-                  className="flex-1 border-b border-dotted border-slate-400 bg-transparent focus:outline-none focus:border-[#0A6EBD]"
+                  className="flex-1 border-b border-dotted border-slate-400 bg-transparent focus:outline-none focus:border-black"
                 />
               </div>
 
               {/* Điểm số & Bỏ phiếu */}
-              <div className="grid grid-cols-2 gap-4 pt-2 bg-sky-50/50 p-3 rounded-lg border border-sky-100">
+              <div className="grid grid-cols-2 gap-4 pt-2 border border-black p-3 bg-slate-50/10">
                 <div className="flex items-center gap-2">
                   <span className="font-bold">Tổng điểm:</span>
                   <input
                     type="text"
                     value={totalScore}
                     onChange={(e) => setTotalScore(e.target.value)}
-                    className="w-16 border-b border-dotted border-slate-400 bg-transparent text-center font-mono font-bold"
+                    className="w-16 border-b border-dotted border-slate-400 bg-transparent text-center font-bold"
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -287,7 +303,7 @@ export function CreateMeetingMinutesModal({
                     type="text"
                     value={avgScore}
                     onChange={(e) => setAvgScore(e.target.value)}
-                    className="w-16 border-b border-dotted border-slate-400 bg-transparent text-center font-mono font-bold text-[#0A6EBD]"
+                    className="w-16 border-b border-dotted border-slate-400 bg-transparent text-center font-bold"
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -296,7 +312,7 @@ export function CreateMeetingMinutesModal({
                     type="text"
                     value={validVotes}
                     onChange={(e) => setValidVotes(e.target.value)}
-                    className="w-12 border-b border-dotted border-slate-400 bg-transparent text-center font-mono font-bold text-emerald-700"
+                    className="w-12 border-b border-dotted border-slate-400 bg-transparent text-center font-bold"
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -305,7 +321,7 @@ export function CreateMeetingMinutesModal({
                     type="text"
                     value={invalidVotes}
                     onChange={(e) => setInvalidVotes(e.target.value)}
-                    className="w-12 border-b border-dotted border-slate-400 bg-transparent text-center font-mono font-bold text-rose-600"
+                    className="w-12 border-b border-dotted border-slate-400 bg-transparent text-center font-bold"
                   />
                 </div>
               </div>
@@ -314,32 +330,32 @@ export function CreateMeetingMinutesModal({
               <div className="space-y-2 pt-2">
                 <label className="font-bold block">9. Kết luận chính thức của Hội đồng:</label>
                 <div className="grid grid-cols-3 gap-2">
-                  <label className="flex items-center gap-2 p-2 border rounded-lg bg-white cursor-pointer">
+                  <label className="flex items-center gap-2 p-2 border border-black bg-white cursor-pointer">
                     <input
                       type="radio"
                       name="conclusion"
                       checked={conclusion === 'APPROVED'}
                       onChange={() => setConclusion('APPROVED')}
                     />
-                    <span className="font-bold text-emerald-800">Thông qua</span>
+                    <span className="font-bold">Thông qua</span>
                   </label>
-                  <label className="flex items-center gap-2 p-2 border rounded-lg bg-white cursor-pointer">
+                  <label className="flex items-center gap-2 p-2 border border-black bg-white cursor-pointer">
                     <input
                       type="radio"
                       name="conclusion"
                       checked={conclusion === 'APPROVED_WITH_REVISION'}
                       onChange={() => setConclusion('APPROVED_WITH_REVISION')}
                     />
-                    <span className="font-bold text-amber-800">Thông qua có sửa đổi</span>
+                    <span className="font-bold">Thông qua có sửa đổi</span>
                   </label>
-                  <label className="flex items-center gap-2 p-2 border rounded-lg bg-white cursor-pointer">
+                  <label className="flex items-center gap-2 p-2 border border-black bg-white cursor-pointer">
                     <input
                       type="radio"
                       name="conclusion"
-                      checked={conclusion === 'REJECTED'}
-                      onChange={() => setConclusion('REJECTED')}
+                      checked={conclusion === 'SCREENING_FAILED'}
+                      onChange={() => setConclusion('SCREENING_FAILED')}
                     />
-                    <span className="font-bold text-rose-800">Không thông qua</span>
+                    <span className="font-bold">Không thông qua</span>
                   </label>
                 </div>
 
@@ -349,7 +365,7 @@ export function CreateMeetingMinutesModal({
                     rows={3}
                     value={summaryOpinions}
                     onChange={(e) => setSummaryOpinions(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-lg outline-none focus:border-[#0A6EBD] leading-relaxed"
+                    className="w-full p-2.5 border border-slate-350 bg-white outline-none focus:border-black leading-relaxed"
                   />
                 </div>
               </div>

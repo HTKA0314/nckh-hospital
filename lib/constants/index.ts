@@ -23,7 +23,7 @@ export const ProgressReportStatus = {
   UNDER_REVIEW: 'UNDER_REVIEW',
   APPROVED: 'APPROVED',
   REVISION_REQUIRED: 'REVISION_REQUIRED',
-  REJECTED: 'REJECTED',
+  REJECTED: 'SCREENING_FAILED',
 } as const;
 
 export const ChangeRequestStatus = {
@@ -33,7 +33,7 @@ export const ChangeRequestStatus = {
   REVISION_REQUIRED: 'REVISION_REQUIRED',
   RESUBMITTED: 'RESUBMITTED',
   APPROVED: 'APPROVED',
-  REJECTED: 'REJECTED',
+  REJECTED: 'SCREENING_FAILED',
 } as const;
 
 export const AcceptanceDossierStatus = {
@@ -52,5 +52,5 @@ export const FinanceStatus = {
   ACTIVE: 'ACTIVE',
   AWAITING_FINALIZATION: 'AWAITING_FINALIZATION',
   FINALIZED: 'FINALIZED',
-  CLOSED: 'CLOSED',
+  CLOSED: 'COMPLETED',
 } as const;

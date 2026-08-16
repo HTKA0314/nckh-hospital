@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 
 export default function TemplatesPage() {
-  const { info } = useToast();
+  const { success } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedFormat, setSelectedFormat] = useState<string>('ALL');
@@ -65,13 +65,13 @@ export default function TemplatesPage() {
   };
 
   const handleDownloadAll = () => {
-    info('Đang nén và chuẩn bị tải xuống trọn bộ Biểu mẫu NCKH Y tế chuẩn Thông tư 09/2024 & TT 43/2024...');
+    success('Bắt đầu tải xuống trọn bộ biểu mẫu dạng ZIP...');
   };
 
   return (
-    <div className="space-y-3 text-slate-800">
+    <div className="space-y-3 text-slate-800 w-full">
       {/* ── HEADER ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4 select-none">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4 select-none w-full">
         <div>
           <h1 className="text-base font-bold text-slate-800">Kho tài liệu & Biểu mẫu</h1>
           <p className="text-[12px] text-slate-500 mt-0.5">
@@ -85,7 +85,7 @@ export default function TemplatesPage() {
               onClick={() => setViewMode('grid')}
               className={`p-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
                 viewMode === 'grid'
-                  ? 'bg-white text-[#0A6EBD] shadow-2xs font-semibold'
+                  ? 'bg-white text-slate-800 shadow-2xs font-semibold'
                   : 'text-slate-500 hover:text-slate-800'
               }`}
               title="Chế độ Thẻ (Grid View)"
@@ -96,7 +96,7 @@ export default function TemplatesPage() {
               onClick={() => setViewMode('table')}
               className={`p-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
                 viewMode === 'table'
-                  ? 'bg-white text-[#0A6EBD] shadow-2xs font-semibold'
+                  ? 'bg-white text-slate-800 shadow-2xs font-semibold'
                   : 'text-slate-500 hover:text-slate-800'
               }`}
               title="Chế độ Bảng (Table View)"
@@ -121,296 +121,343 @@ export default function TemplatesPage() {
         </div>
       </div>
 
-      {/* ── FILTER BAR ── */}
-      <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs px-4 py-2.5 flex flex-wrap items-center gap-2.5">
-        <Filter className="w-4 h-4 text-slate-400 shrink-0" />
-
-        {/* Search */}
-        <div className="relative w-full sm:w-64">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Tìm biểu mẫu, mã số..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="w-full pl-9 pr-8 py-1.5 rounded-lg border border-slate-300 focus:border-[#0A6EBD] text-xs outline-none bg-white transition"
-          />
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-
-        {/* Quick Category Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-          {[
-            { id: 'ALL', label: 'Tất cả' },
-            { id: 'PROPOSAL', label: 'Đăng ký & Thuyết minh' },
-            { id: 'ETHICS', label: 'Đạo đức IRB' },
-            { id: 'COUNCIL', label: 'Hội đồng' },
-            { id: 'PROGRESS_FINANCE', label: 'Tiến độ & Tài chính' },
-            { id: 'ACCEPTANCE', label: 'Nghiệm thu' },
-          ].map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => {
-                setSelectedCategory(cat.id);
-                setCurrentPage(1);
-              }}
-              className={`px-2 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
-                selectedCategory === cat.id
-                  ? 'bg-sky-50 text-[#0A6EBD] border border-sky-200 shadow-2xs'
-                  : 'text-slate-600 hover:bg-slate-50 border border-transparent'
-              }`}
-            >
-              {cat.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="h-4 w-px bg-slate-200 hidden lg:block" />
-
-        {/* Format Selector */}
-        <select
-          value={selectedFormat}
-          onChange={(e) => {
-            setSelectedFormat(e.target.value);
-            setCurrentPage(1);
-          }}
-          className={`py-1.5 px-2.5 rounded-lg border text-xs font-medium outline-none transition cursor-pointer ${
-            selectedFormat !== 'ALL'
-              ? 'border-[#0A6EBD] text-[#0A6EBD] bg-[#EBF4FC]'
-              : 'border-slate-300 bg-white text-slate-600'
-          }`}
-        >
-          <option value="ALL">Định dạng: Tất cả</option>
-          <option value="WORD">Microsoft Word (.docx)</option>
-          <option value="EXCEL">Microsoft Excel (.xlsx)</option>
-          <option value="PDF">Tài liệu PDF (.pdf)</option>
-        </select>
-
-        {/* Legal Ref Selector */}
-        <select
-          value={selectedLegalRef}
-          onChange={(e) => {
-            setSelectedLegalRef(e.target.value);
-            setCurrentPage(1);
-          }}
-          className={`py-1.5 px-2.5 rounded-lg border text-xs font-semibold outline-none transition cursor-pointer ${
-            selectedLegalRef !== 'ALL'
-              ? 'border-[#0A6EBD] text-[#0A6EBD] bg-[#EBF4FC]'
-              : 'border-slate-300 bg-white text-slate-600'
-          }`}
-        >
-          <option value="ALL">Căn cứ: Tất cả</option>
-          <option value="37/2010">TT 37/2010/TT-BYT</option>
-          <option value="14/2014">TT 14/2014/TT-BKHCN</option>
-          <option value="03/2017">TT 03/2017/TT-BKHCN</option>
-          <option value="11/2014">TT 11/2014/TT-BKHCN</option>
-          <option value="04/2015">TT 04/2015/TT-BKHCN</option>
-          <option value="43/2024">TT 43/2024/TT-BYT</option>
-        </select>
-
-        {hasFilters && (
-          <button
-            onClick={() => {
-              setSelectedCategory('ALL');
-              setSelectedFormat('ALL');
-              setSelectedLegalRef('ALL');
-              setSearchTerm('');
-              setCurrentPage(1);
-            }}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-100 transition shadow-2xs cursor-pointer"
-          >
-            <X className="w-3 h-3" /> Xóa bộ lọc
-          </button>
-        )}
-
-        <span className="ml-auto text-[12px] text-slate-400 font-medium">
-          <strong className="text-slate-700 font-mono font-bold">{filteredTemplates.length}</strong> / {MEDICAL_TEMPLATES_DATA.length} biểu mẫu
-        </span>
-      </div>
-
-      {/* ── GRID VIEW ── */}
-      {viewMode === 'grid' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-          {filteredTemplates.length === 0 ? (
-            <div className="col-span-full bg-white rounded-xl border border-slate-200/80 p-12 text-center text-slate-400 font-medium">
-              Không tìm thấy biểu mẫu nào phù hợp với điều kiện tìm kiếm.
-            </div>
-          ) : (
-            pagedTemplates.map((item) => (
-              <div
-                key={item.id}
-                className="bg-white rounded-xl border border-slate-200/80 shadow-xs p-4 flex flex-col justify-between hover:border-sky-300 hover:shadow-sm transition group"
-              >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-xs text-[#0A6EBD] bg-sky-50 px-2.5 py-0.5 rounded-md border border-sky-100">
-                      {item.code}
-                    </span>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded font-mono ${
-                        item.format === 'WORD'
-                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                          : item.format === 'EXCEL'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : 'bg-rose-50 text-rose-700 border border-rose-200'
-                      }`}
-                    >
-                      {item.format}
-                    </span>
-                  </div>
-
-                  <h3 className="font-bold text-slate-900 text-sm leading-snug group-hover:text-[#0A6EBD] transition line-clamp-2">
-                    {item.name}
-                  </h3>
-
-                  <p className="text-[12px] text-slate-600 line-clamp-2 leading-relaxed">
-                    {item.description}
-                  </p>
-
-                  <div className="text-[11px] text-slate-500 space-y-1 pt-1.5 border-t border-slate-100">
-                    <p className="flex items-center gap-1.5 text-slate-700">
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>Căn cứ: <strong>{item.legalRef}</strong></span>
-                    </p>
-                    <p className="text-slate-400">
-                      Phiên bản: <strong className="text-slate-600 font-mono">{item.templateVersion}</strong> • Cập nhật: {item.updatedAt}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="pt-3.5 mt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                  <button
-                    onClick={() => setPreviewTemplate(item)}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-[#0A6EBD] transition cursor-pointer"
-                  >
-                    <Eye className="w-3.5 h-3.5" /> Xem trước
-                  </button>
-
-                  <button
-                    onClick={() => handleDownload(item)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-[#0A6EBD] hover:bg-[#085999] rounded-lg transition shadow-xs cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5" /> Tải về ({item.format})
-                  </button>
-                </div>
+      {/* ── BỐ CỤC 2 CỘT CHUYÊN NGHIỆP ── */}
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12 w-full">
+        
+        {/* Cột trái (3 cột): Căn cứ Pháp lý & Quy chế quản lý */}
+        <div className="lg:col-span-3 space-y-4">
+          <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-3">
+            <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-100 pb-2 select-none">
+              <ShieldCheck className="w-4 h-4 text-[#0A6EBD]" />
+              <span>Hành lang pháp lý</span>
+            </h3>
+            
+            <div className="space-y-3 font-medium text-slate-600 leading-relaxed text-[11px]">
+              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                <p className="font-bold text-slate-800 text-xs">Thông tư 43/2024/TT-BYT</p>
+                <p className="text-slate-500 mt-0.5">Quy định chi tiết việc quản lý nhiệm vụ khoa học và công nghệ cấp Bộ, ngành Y tế.</p>
               </div>
-            ))
-          )}
-        </div>
-      )}
 
-      {/* ── TABLE VIEW ── */}
-      {viewMode === 'table' && (
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-[13px]">
-              <thead className="bg-[#F8FAFC] border-b border-slate-200/80 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                <tr>
-                  <th className="px-4 py-3 w-32 whitespace-nowrap">MÃ BIỂU MẪU</th>
-                  <th className="px-4 py-3 min-w-[320px]">TÊN BIỂU MẪU & MÔ TẢ</th>
-                  <th className="px-4 py-3 w-48 whitespace-nowrap">NHÓM NGHIỆP VỤ</th>
-                  <th className="px-4 py-3 w-56 whitespace-nowrap">CĂN CỨ PHÁP LÝ</th>
-                  <th className="px-4 py-3 w-36 text-center whitespace-nowrap">ĐỊNH DẠNG</th>
-                  <th className="px-4 py-3 w-32 text-center whitespace-nowrap">CẬP NHẬT</th>
-                  <th className="px-4 py-3 text-center w-36 whitespace-nowrap">THAO TÁC</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium">
-                {filteredTemplates.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
-                      Không tìm thấy biểu mẫu nào phù hợp.
-                    </td>
-                  </tr>
-                ) : (
-                  pagedTemplates.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition">
-                      <td className="px-4 py-3.5 font-mono font-bold text-[#0A6EBD] whitespace-nowrap align-middle">
-                        {item.code}
-                      </td>
-                      <td className="px-4 py-3.5 align-middle">
-                        <button
-                          onClick={() => setPreviewTemplate(item)}
-                          className="font-semibold text-slate-900 hover:text-[#0A6EBD] text-left line-clamp-1 cursor-pointer"
-                        >
-                          {item.name}
-                        </button>
-                        <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">{item.description}</p>
-                      </td>
-                      <td className="px-4 py-3.5 text-slate-700 whitespace-nowrap align-middle">
-                        <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
-                          {item.categoryLabel}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap align-middle">
-                        <span className="text-xs text-slate-700 font-medium flex items-center gap-1">
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> {item.legalRef}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 text-center whitespace-nowrap align-middle">
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded font-mono ${
-                            item.format === 'WORD'
-                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                              : item.format === 'EXCEL'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-rose-50 text-rose-700 border border-rose-200'
-                          }`}
-                        >
-                          {item.format} • {item.size}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 text-center font-mono text-xs text-slate-500 whitespace-nowrap align-middle">
-                        {item.updatedAt}
-                      </td>
-                      <td className="px-4 py-3.5 text-center whitespace-nowrap align-middle">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => setPreviewTemplate(item)}
-                            className="p-1.5 text-slate-600 hover:text-[#0A6EBD] hover:bg-slate-100 rounded-md transition cursor-pointer"
-                            title="Xem trước cấu trúc"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDownload(item)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-[#0A6EBD] hover:bg-[#085999] rounded-md transition shadow-2xs cursor-pointer"
-                          >
-                            <Download className="w-3.5 h-3.5" /> Tải về
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                <p className="font-bold text-slate-800 text-xs">Thông tư 37/2010/TT-BYT</p>
+                <p className="text-slate-500 mt-0.5">Hướng dẫn quy trình thử nghiệm lâm sàng và đánh giá đạo đức trong nghiên cứu y sinh.</p>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                <p className="font-bold text-slate-800 text-xs">Thông tư 11/2014/TT-BKHCN</p>
+                <p className="text-slate-500 mt-0.5">Quy định đánh giá, nghiệm thu kết quả thực hiện nhiệm vụ KH&CN sử dụng ngân sách nhà nước.</p>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                <p className="font-bold text-slate-800 text-xs">Quy chế NCKH Bệnh viện</p>
+                <p className="text-slate-500 mt-0.5">Quy định nội bộ ban hành kèm Quyết định số 128/QĐ-BV về thẩm định và nghiệm thu đề tài cơ sở.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 shadow-2xs space-y-2">
+            <h4 className="font-bold text-slate-800 text-xs select-none">Lưu ý quản lý chất lượng:</h4>
+            <p className="text-slate-500 leading-relaxed text-[11px] font-medium">
+              Các biểu mẫu được chuẩn hóa theo quy trình quản lý chất lượng ISO 9001 của Bệnh viện. Sau khi tải về, vui lòng giữ nguyên bố cục cấu trúc các trường bắt buộc để phục vụ việc thẩm duyệt tự động.
+            </p>
           </div>
         </div>
-      )}
 
-      {/* Pagination Footer */}
-      <Pagination
-        currentPage={currentPage}
-        totalItems={filteredTemplates.length}
-        pageSize={pageSize}
-        onPageChange={setCurrentPage}
-        onPageSizeChange={(size) => {
-          setPageSize(size);
-          setCurrentPage(1);
-        }}
-        itemLabel="biểu mẫu"
-      />
+        {/* Cột phải (9 cột): Danh sách biểu mẫu & Tìm kiếm lọc */}
+        <div className="lg:col-span-9 space-y-3">
+          
+          {/* ── FILTER BAR ── */}
+          <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs p-3 flex flex-wrap items-center gap-2.5 w-full">
+            <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+
+            {/* Search */}
+            <div className="relative w-full sm:w-60">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Tìm biểu mẫu, mã số..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full pl-9 pr-8 py-1.5 rounded-lg border border-slate-300 focus:border-[#0A6EBD] text-xs outline-none bg-white transition"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Category Tabs */}
+            <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
+              {[
+                { id: 'ALL', label: 'Tất cả' },
+                { id: 'PROPOSAL', label: 'Đăng ký & Đề cương' },
+                { id: 'ETHICS', label: 'Đạo đức IRB' },
+                { id: 'COUNCIL', label: 'Hội đồng' },
+                { id: 'PROGRESS_FINANCE', label: 'Tiến độ & Tài chính' },
+                { id: 'ACCEPTANCE', label: 'Nghiệm thu' },
+              ].map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => {
+                    setSelectedCategory(cat.id);
+                    setCurrentPage(1);
+                  }}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold whitespace-nowrap transition cursor-pointer border ${
+                    selectedCategory === cat.id
+                      ? 'bg-slate-800 text-white border-slate-800 shadow-2xs'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="h-4 w-px bg-slate-200 hidden lg:block" />
+
+            {/* Format Selector */}
+            <select
+              value={selectedFormat}
+              onChange={(e) => {
+                setSelectedFormat(e.target.value);
+                setCurrentPage(1);
+              }}
+              className={`py-1.5 px-2 rounded-lg border text-xs font-semibold outline-none transition cursor-pointer ${
+                selectedFormat !== 'ALL'
+                  ? 'border-[#0A6EBD] text-[#0A6EBD] bg-[#EBF4FC]'
+                  : 'border-slate-300 bg-white text-slate-600'
+              }`}
+            >
+              <option value="ALL">Định dạng</option>
+              <option value="WORD">Microsoft Word (.docx)</option>
+              <option value="EXCEL">Microsoft Excel (.xlsx)</option>
+              <option value="PDF">Tài liệu PDF (.pdf)</option>
+            </select>
+
+            {/* Legal Ref Selector */}
+            <select
+              value={selectedLegalRef}
+              onChange={(e) => {
+                setSelectedLegalRef(e.target.value);
+                setCurrentPage(1);
+              }}
+              className={`py-1.5 px-2 rounded-lg border text-xs font-semibold outline-none transition cursor-pointer ${
+                selectedLegalRef !== 'ALL'
+                  ? 'border-[#0A6EBD] text-[#0A6EBD] bg-[#EBF4FC]'
+                  : 'border-slate-300 bg-white text-slate-600'
+              }`}
+            >
+              <option value="ALL">Căn cứ văn bản</option>
+              <option value="37/2010">TT 37/2010/TT-BYT</option>
+              <option value="14/2014">TT 14/2014/TT-BKHCN</option>
+              <option value="03/2017">TT 03/2017/TT-BKHCN</option>
+              <option value="11/2014">TT 11/2014/TT-BKHCN</option>
+              <option value="04/2015">TT 04/2015/TT-BKHCN</option>
+              <option value="43/2024">TT 43/2024/TT-BYT</option>
+            </select>
+
+            {hasFilters && (
+              <button
+                onClick={() => {
+                  setSelectedCategory('ALL');
+                  setSelectedFormat('ALL');
+                  setSelectedLegalRef('ALL');
+                  setSearchTerm('');
+                  setCurrentPage(1);
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-100 transition shadow-2xs cursor-pointer"
+              >
+                <X className="w-3 h-3" /> Xóa lọc
+              </button>
+            )}
+
+            <span className="ml-auto text-[11px] text-slate-400 font-medium">
+              Tìm thấy <strong className="text-slate-700 font-mono font-bold">{filteredTemplates.length}</strong> / {MEDICAL_TEMPLATES_DATA.length} biểu mẫu
+            </span>
+          </div>
+
+          {/* ── GRID VIEW ── */}
+          {viewMode === 'grid' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {filteredTemplates.length === 0 ? (
+                <div className="col-span-full bg-white rounded-xl border border-slate-200/80 p-12 text-center text-slate-400 font-medium">
+                  Không tìm thấy biểu mẫu nào phù hợp với điều kiện tìm kiếm.
+                </div>
+              ) : (
+                pagedTemplates.map((item) => (
+                  <div
+                    key={item.id}
+                    className="bg-white rounded-xl border border-slate-200/80 shadow-xs p-3.5 flex flex-col justify-between hover:border-sky-300 hover:shadow-sm transition group"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono font-bold text-[10px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                          {item.code}
+                        </span>
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                            item.format === 'WORD'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : item.format === 'EXCEL'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}
+                        >
+                          {item.format}
+                        </span>
+                      </div>
+
+                      <h3 className="font-bold text-slate-900 text-xs leading-snug group-hover:text-[#0A6EBD] transition line-clamp-2">
+                        {item.name}
+                      </h3>
+
+                      <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed font-medium">
+                        {item.description}
+                      </p>
+
+                      <div className="text-[10px] text-slate-500 space-y-1 pt-1.5 border-t border-slate-100">
+                        <p className="flex items-center gap-1.5 text-slate-700">
+                          <ShieldCheck className="w-3.5 h-3.5 text-[#0A6EBD] shrink-0" />
+                          <span>Căn cứ: <strong>{item.legalRef}</strong></span>
+                        </p>
+                        <p className="text-slate-400">
+                          Phiên bản: <strong className="text-slate-600 font-mono">{item.templateVersion}</strong> • Cập nhật: {item.updatedAt}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-2.5 mt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => setPreviewTemplate(item)}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-[#0A6EBD] transition cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> Xem trước
+                      </button>
+
+                      <button
+                        onClick={() => handleDownload(item)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-white bg-[#0A6EBD] hover:bg-[#085999] rounded-md transition shadow-xs cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Tải về
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ── TABLE VIEW ── */}
+          {viewMode === 'table' && (
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden w-full">
+              <div className="overflow-x-auto w-full">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead className="bg-[#0B2A63] border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-white select-none">
+                    <tr>
+                      <th className="px-3.5 py-2.5 w-28 whitespace-nowrap">Mã biểu mẫu</th>
+                      <th className="px-3.5 py-2.5 min-w-[280px]">Tên biểu mẫu & Mô tả</th>
+                      <th className="px-3.5 py-2.5 w-40 whitespace-nowrap">Nhóm nghiệp vụ</th>
+                      <th className="px-3.5 py-2.5 w-48 whitespace-nowrap">Căn cứ pháp lý</th>
+                      <th className="px-3.5 py-2.5 w-28 text-center whitespace-nowrap">Định dạng</th>
+                      <th className="px-3.5 py-2.5 w-24 text-center whitespace-nowrap">Cập nhật</th>
+                      <th className="px-3.5 py-2.5 text-center w-28 whitespace-nowrap">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                    {filteredTemplates.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
+                          Không tìm thấy biểu mẫu nào phù hợp.
+                        </td>
+                      </tr>
+                    ) : (
+                      pagedTemplates.map((item) => (
+                        <tr key={item.id} className="hover:bg-slate-50/50 transition">
+                          <td className="px-3.5 py-3 font-mono font-bold text-slate-800 whitespace-nowrap align-middle">
+                            {item.code}
+                          </td>
+                          <td className="px-3.5 py-3 align-middle">
+                            <button
+                              onClick={() => setPreviewTemplate(item)}
+                              className="font-bold text-slate-900 hover:text-[#0A6EBD] text-left line-clamp-1 cursor-pointer"
+                            >
+                              {item.name}
+                            </button>
+                            <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1 font-medium">{item.description}</p>
+                          </td>
+                          <td className="px-3.5 py-3 text-slate-600 whitespace-nowrap align-middle">
+                            <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              {item.categoryLabel}
+                            </span>
+                          </td>
+                          <td className="px-3.5 py-3 whitespace-nowrap align-middle">
+                            <span className="text-[11px] text-slate-700 font-semibold flex items-center gap-1">
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> {item.legalRef}
+                            </span>
+                          </td>
+                          <td className="px-3.5 py-3 text-center whitespace-nowrap align-middle">
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                                item.format === 'WORD'
+                                  ? 'bg-blue-50/50 text-blue-700 border-blue-200'
+                                  : item.format === 'EXCEL'
+                                  ? 'bg-emerald-50/50 text-emerald-700 border-emerald-200'
+                                  : 'bg-rose-50/50 text-rose-700 border-rose-200'
+                              }`}
+                            >
+                              {item.format} • {item.size}
+                            </span>
+                          </td>
+                          <td className="px-3.5 py-3 text-center font-mono text-[11px] text-slate-500 whitespace-nowrap align-middle">
+                            {item.updatedAt}
+                          </td>
+                          <td className="px-3.5 py-3 text-center whitespace-nowrap align-middle">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => setPreviewTemplate(item)}
+                                className="p-1 text-slate-500 hover:text-[#0A6EBD] hover:bg-slate-100 rounded transition cursor-pointer"
+                                title="Xem trước cấu trúc"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDownload(item)}
+                                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-white bg-[#0B2A63] hover:bg-[#0A6EBD] rounded transition shadow-2xs cursor-pointer"
+                              >
+                                <Download className="w-3 h-3" /> Tải về
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Pagination Footer */}
+          <Pagination
+            currentPage={currentPage}
+            totalItems={filteredTemplates.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setCurrentPage(1);
+            }}
+            itemLabel="biểu mẫu"
+          />
+        </div>
+      </div>
 
       {/* ── MODAL PREVIEW A4 VĂN BẢN HÀNH CHÍNH ── */}
       {previewTemplate && (
@@ -418,7 +465,7 @@ export default function TemplatesPage() {
           <div className="bg-white rounded-xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in duration-200 text-xs">
             <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="font-mono font-bold text-xs text-[#0A6EBD] bg-white px-2.5 py-0.5 rounded border border-sky-200">
+                <span className="font-mono font-bold text-xs text-slate-800 bg-white px-2.5 py-0.5 rounded border border-slate-200">
                   {previewTemplate.code}
                 </span>
                 <span className="font-bold text-slate-900 text-sm">{previewTemplate.name}</span>
@@ -455,7 +502,7 @@ export default function TemplatesPage() {
                 <div className="pt-2 font-sans text-xs text-slate-700 space-y-2">
                   <div className="p-3 bg-white rounded-lg border border-slate-200">
                     <p className="font-bold text-slate-900 mb-1">Mục đích áp dụng:</p>
-                    <p className="leading-relaxed text-slate-600">{previewTemplate.description}</p>
+                    <p className="leading-relaxed text-slate-600 font-medium">{previewTemplate.description}</p>
                   </div>
 
                   <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-1.5">

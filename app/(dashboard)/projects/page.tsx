@@ -7,6 +7,9 @@ import { repo } from '@/lib/repository';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Pagination } from '@/components/ui/Pagination';
 import { formatVND, formatDate } from '@/lib/utils';
+import { useToast } from '@/components/ui/Toast';
+import { AdminReviewModal } from './_components/AdminReviewModal';
+import { ApproveProposalModal } from './ApproveProposalModal';
 import { DocxExportService } from '@/lib/services/docx-export-service';
 import {
   Search,
@@ -17,6 +20,7 @@ import {
   FileCheck2,
   Award,
   X,
+  CheckCircle2,
   DollarSign,
   TrendingUp,
   Filter,
@@ -44,11 +48,11 @@ const getDisplayStatusType = (
 
 const PROGRESS_STATUSES = new Set([
   'IN_PROGRESS',
-  'WAITING_ACCEPTANCE',
-  'ACCEPTED',
-  'RECOGNIZED',
-  'CLOSED',
-  'ARCHIVED',
+  'CLOSING_SUBMITTED',
+  'COMPLETED',
+  'COMPLETED',
+  'COMPLETED',
+  'COMPLETED',
 ]);
 
 /* ─────────────────────────────────────────────────────────────
@@ -102,7 +106,7 @@ function ProjectDrawer({
           {/* Status + Progress */}
           <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
             <StatusBadge status={getDisplayStatus(p)} type={getDisplayStatusType(p)} />
-            {['IN_PROGRESS', 'WAITING_ACCEPTANCE'].includes(p.status) && (
+            {['IN_PROGRESS', 'CLOSING_SUBMITTED'].includes(p.status) && (
               <div className="flex-1">
                 <div className="flex items-center justify-between text-[11px] font-bold mb-1">
                   <span className="text-slate-500">Tiến độ thực hiện</span>
@@ -224,16 +228,20 @@ function RowActionMenu({
   proposalStatus,
   role,
   onAdminReview,
+  onReceiveProject,
   onExportDoc,
   onViewAttachments,
+  onApproveProposal,
 }: {
   projectId: string;
   status: string;
   proposalStatus: string;
   role: string;
   onAdminReview?: () => void;
+  onReceiveProject?: () => void;
   onExportDoc?: () => void;
   onViewAttachments?: () => void;
+  onApproveProposal?: () => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -283,7 +291,14 @@ function RowActionMenu({
       if (exportDoc) actions.push(exportDoc);
       if (viewAttach) actions.push(viewAttach);
 
-      if (proposalStatus === 'SUBMITTED' || proposalStatus === 'UNDER_ADMIN_REVIEW' || proposalStatus === 'RESUBMITTED') {
+      if (proposalStatus === 'SUBMITTED' || proposalStatus === 'RESUBMITTED') {
+        if (isReviewStaff && onReceiveProject) {
+          actions.push({ kind: 'divider' });
+          actions.push({ kind: 'btn', icon: CheckCircle2, label: 'Tiếp nhận hồ sơ', color: 'text-emerald-600', onClick: onReceiveProject });
+        }
+      }
+      
+      if (proposalStatus === 'UNDER_ADMIN_REVIEW') {
         if (isReviewStaff && onAdminReview) {
           actions.push({ kind: 'divider' });
           actions.push({ kind: 'btn', icon: ClipboardList, label: 'Thẩm định hồ sơ', color: 'text-[#0A6EBD]', onClick: onAdminReview });
@@ -298,6 +313,15 @@ function RowActionMenu({
       ) {
         if (isReviewStaff) {
           actions.push({ kind: 'divider' });
+          if (onApproveProposal) {
+            actions.push({
+              kind: 'btn',
+              icon: CheckCircle2,
+              label: 'Duyệt đề cương',
+              color: 'text-emerald-700 font-bold',
+              onClick: onApproveProposal,
+            });
+          }
           actions.push({ kind: 'link', icon: Users, label: 'Xem bước Hội đồng', href: `/councils`, color: 'text-[#0A6EBD]' });
         }
       } else if (proposalStatus === 'REVISION_REQUIRED' || proposalStatus === 'PROPOSAL_REVISION_REQUIRED') {
@@ -314,7 +338,7 @@ function RowActionMenu({
       return actions;
     }
 
-    if (status === 'WAITING_ASSIGNMENT') {
+    if (status === 'APPROVED_PENDING_CONTRACT') {
       const actions: Action[] = [viewDetail, { kind: 'divider' }];
       if (exportDoc) actions.push(exportDoc);
       if (viewAttach) actions.push(viewAttach);
@@ -346,7 +370,7 @@ function RowActionMenu({
       return actions;
     }
 
-    if (status === 'WAITING_ACCEPTANCE') {
+    if (status === 'CLOSING_SUBMITTED') {
       const actions: Action[] = [viewDetail, { kind: 'divider' }];
       if (exportDoc) actions.push(exportDoc);
       if (viewAttach) actions.push(viewAttach);
@@ -356,7 +380,7 @@ function RowActionMenu({
       return actions;
     }
 
-    if (status === 'ACCEPTED') {
+    if (status === 'COMPLETED') {
       const actions: Action[] = [viewDetail, { kind: 'divider' }];
       if (exportDoc) actions.push(exportDoc);
       if (viewAttach) actions.push(viewAttach);
@@ -437,8 +461,12 @@ function RowActionMenu({
 export default function ProjectListPage() {
   const router = useRouter();
   const { currentUser } = useAuth();
-
+  const { success } = useToast();
+  
   const [isMounted, setIsMounted] = useState(false);
+  const [dataVersion, setDataVersion] = useState(0);
+  const [reviewProjectId, setReviewProjectId] = useState<string | null>(null);
+  const [approveProjectId, setApproveProjectId] = useState<string | null>(null);
   const [selectedDept, setSelectedDept] = useState('ALL');
   const [selectedRound, setSelectedRound] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
@@ -472,9 +500,36 @@ export default function ProjectListPage() {
     router.push(`/projects/${project.id}`);
   };
 
-  const projects = useMemo(() => repo.getProjects(), []);
+  const projects = useMemo(() => repo.getProjects(), [dataVersion]);
   const departments = useMemo(() => repo.getDepartments(), []);
   const rounds = useMemo(() => repo.getRounds(), []);
+  
+  const handleReceiveProject = (projectId: string) => {
+    if (!currentUser) return;
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+    
+    const now = new Date().toISOString();
+    repo.updateProject(projectId, {
+      proposalStatus: 'UNDER_ADMIN_REVIEW',
+      updatedAt: now,
+    });
+
+    repo.addAuditLog({
+      userId: currentUser.id,
+      userFullName: currentUser.fullName,
+      userRole: currentUser.role,
+      actionCode: 'RECEIVE_PROPOSAL_DOSSIER',
+      entityType: 'PROJECT',
+      entityId: projectId,
+      fromStatus: project.proposalStatus,
+      toStatus: 'UNDER_ADMIN_REVIEW',
+      notes: `Tiếp nhận hồ sơ ${project.proposalCode || project.projectCode}.`,
+    });
+
+    setDataVersion(v => v + 1);
+    success('Đã tiếp nhận hồ sơ thành công.');
+  };
   const years = useMemo(() => Array.from(new Set(rounds.map((r) => r.year))).sort((a, b) => b - a), [rounds]);
   const researchFields = useMemo(() => Array.from(new Set(projects.map((p) => p.researchField).filter(Boolean))).sort(), [projects]);
 
@@ -585,16 +640,16 @@ export default function ProjectListPage() {
               { value: 'PROPOSAL_RESUBMITTED', label: 'Đã nộp lại đề cương' },
               { value: 'UNDER_PROPOSAL_REVISION_REVIEW', label: 'Đang xét lại đề cương' },
               { value: 'PROPOSAL_APPROVED', label: 'Đề cương được thông qua' },
-              { value: 'WAITING_ASSIGNMENT', label: 'Chờ giao thực hiện' },
+              { value: 'APPROVED_PENDING_CONTRACT', label: 'Chờ giao thực hiện' },
               { value: 'IN_PROGRESS', label: 'Đang thực hiện' },
-              { value: 'WAITING_ACCEPTANCE', label: 'Chờ nghiệm thu' },
-              { value: 'ACCEPTED', label: 'Đã nghiệm thu' },
-              { value: 'RECOGNIZED', label: 'Đã công nhận kết quả' },
-              { value: 'CLOSED', label: 'Đã đóng' },
-              { value: 'ARCHIVED', label: 'Đã lưu trữ' },
-              { value: 'SUSPENDED', label: 'Tạm dừng' },
+              { value: 'CLOSING_SUBMITTED', label: 'Chờ nghiệm thu' },
+              { value: 'COMPLETED', label: 'Đã nghiệm thu' },
+              { value: 'COMPLETED', label: 'Đã công nhận kết quả' },
+              { value: 'COMPLETED', label: 'Đã đóng' },
+              { value: 'COMPLETED', label: 'Đã lưu trữ' },
+              { value: 'EXTENSION_REQUESTED', label: 'Tạm dừng' },
               { value: 'TERMINATED', label: 'Đã chấm dứt' },
-              { value: 'REJECTED', label: 'Bị từ chối' },
+              { value: 'SCREENING_FAILED', label: 'Bị từ chối' },
             ],
           },
           {
@@ -726,9 +781,11 @@ export default function ProjectListPage() {
                         status={p.status}
                         proposalStatus={p.proposalStatus}
                         role={currentUser?.role || 'RESEARCHER'}
-                        onAdminReview={() => router.push(`/review`)}
+                        onAdminReview={() => setReviewProjectId(p.id)}
+                        onReceiveProject={() => handleReceiveProject(p.id)}
                         onExportDoc={() => handleExportDoc(p)}
                         onViewAttachments={() => handleViewAttachments(p)}
+                        onApproveProposal={() => setApproveProjectId(p.id)}
                       />
                     </td>
                   </tr>
@@ -773,6 +830,34 @@ export default function ProjectListPage() {
         <ProjectDrawer
           projectId={drawerProjectId}
           onClose={() => setDrawerProjectId(null)}
+        />
+      )}
+
+      {/* Review Modal */}
+      {reviewProjectId && (
+        <AdminReviewModal
+          project={projects.find(p => p.id === reviewProjectId)!}
+          onClose={() => setReviewProjectId(null)}
+          onSuccess={() => {
+            setReviewProjectId(null);
+            setDataVersion(v => v + 1);
+            success('Đã lưu kết quả thẩm định hồ sơ.');
+          }}
+        />
+      )}
+
+      {/* Approve Proposal Modal */}
+      {approveProjectId && (
+        <ApproveProposalModal
+          isOpen={true}
+          onClose={() => setApproveProjectId(null)}
+          projectId={approveProjectId}
+          projectCode={projects.find(p => p.id === approveProjectId)?.projectCode}
+          projectTitle={projects.find(p => p.id === approveProjectId)?.title}
+          onSuccess={() => {
+            setApproveProjectId(null);
+            setDataVersion(v => v + 1);
+          }}
         />
       )}
     </div>

@@ -218,7 +218,7 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, setSidebarColl
                   {demoRoles.map((item) => (
                     <button
                       key={item.role}
-                      onClick={() => { switchRole(item.role); setShowRoleMenu(false); }}
+                      onClick={() => { switchRole(item.role, item.desc); setShowRoleMenu(false); }}
                       className={`w-full text-left px-3 py-2 rounded-lg text-[13px] flex items-center justify-between transition ${
                         currentUser.role === item.role
                           ? 'bg-[#EBF4FC] font-bold text-[#0A6EBD]'

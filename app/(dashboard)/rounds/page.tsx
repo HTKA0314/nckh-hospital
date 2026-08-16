@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { repo } from '@/lib/repository';
 import { useAuth } from '@/lib/auth-context';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { RegistrationRound } from '@/lib/types';
 import { formatVND, formatDate } from '@/lib/utils';
@@ -29,33 +30,6 @@ import {
   ShieldCheck,
   ArrowLeft,
 } from 'lucide-react';
-
-/* ─────────────────────────────────────────────────────────────────
-   HELPER: Status badge
-   ───────────────────────────────────────────────────────────────── */
-function StatusBadge({ status }: { status: string }) {
-  if (status === 'OPEN') {
-    return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 select-none">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-        Đang mở
-      </span>
-    );
-  }
-  if (status === 'DRAFT') {
-    return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-50 text-slate-600 border border-slate-200 select-none">
-        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-        Bản nháp
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200 select-none">
-      Đã đóng
-    </span>
-  );
-}
 
 function daysRemaining(endDate: string): number {
   const end = new Date(endDate);
@@ -162,7 +136,7 @@ function RoundActionMenu({
               )}
             </>
           )}
-          {round.status === 'CLOSED' && (
+          {round.status === 'COMPLETED' && (
             <>
               {item(<Eye className="w-3.5 h-3.5" />, 'Xem chi tiết', onView)}
               {item(<FileText className="w-3.5 h-3.5" />, 'Xem hồ sơ đã nộp', onViewApplications)}
@@ -204,6 +178,12 @@ function RoundDetailView({
   onExport,
   canManage,
 }: RoundDetailViewProps) {
+  const { success } = useToast();
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [showBatchApproveModal, setShowBatchApproveModal] = useState(false);
+  const [approveDecisionNumber, setApproveDecisionNumber] = useState('');
+  const [approveDecisionDate, setApproveDecisionDate] = useState(new Date().toISOString().split('T')[0]);
+
   const projects = useMemo(() => {
     return repo.getProjects().filter((p) => p.registrationRoundId === round.id);
   }, [round.id]);
@@ -243,20 +223,41 @@ function RoundDetailView({
             },
           ]
         : []),
-      ...(round.status === 'CLOSED'
+      ...(round.status === 'COMPLETED'
         ? [
             {
               timestamp: round.endDate + ' 17:00',
               user: 'Phòng Quản lý NCKH',
               action: 'Đóng đợt đăng ký',
               oldStatus: 'OPEN',
-              newStatus: 'CLOSED',
+              newStatus: 'COMPLETED',
               notes: 'Hết hạn tiếp nhận hồ sơ theo cấu hình đợt.',
             },
           ]
         : []),
     ];
   }, [round]);
+
+  const toggleSelectProject = (id: string) => {
+    setSelectedProjectIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllProjects = () => {
+    if (selectedProjectIds.length === projects.length && projects.length > 0) {
+      setSelectedProjectIds([]);
+    } else {
+      setSelectedProjectIds(projects.map((p) => p.id));
+    }
+  };
+
+  const handleBatchApprove = (e: React.FormEvent) => {
+    e.preventDefault();
+    setShowBatchApproveModal(false);
+    setSelectedProjectIds([]);
+    success(`Đã phê duyệt ${selectedProjectIds.length} đề xuất và ghi nhận Quyết định đính kèm thành công!`);
+  };
 
   return (
     <div className="space-y-4 text-slate-800 animate-in fade-in duration-200">
@@ -323,7 +324,7 @@ function RoundDetailView({
               </button>
             </>
           )}
-          {round.status === 'CLOSED' && (
+          {round.status === 'COMPLETED' && (
             <button
               onClick={onExport}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 border border-sky-200 text-[#0A6EBD] text-xs font-bold rounded-lg hover:bg-sky-100 transition shadow-2xs cursor-pointer"
@@ -420,10 +421,34 @@ function RoundDetailView({
                   <p className="text-xs font-semibold">Chưa có hồ sơ đăng ký nào trong đợt này</p>
                 </div>
               ) : (
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                  {canManage && selectedProjectIds.length > 0 && (
+                    <div className="bg-sky-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#0A6EBD]">
+                        Đã chọn {selectedProjectIds.length} đề xuất
+                      </span>
+                      <button
+                        onClick={() => setShowBatchApproveModal(true)}
+                        className="px-3 py-1.5 bg-[#0A6EBD] text-white text-xs font-bold rounded hover:bg-[#085a9c] transition shadow-sm cursor-pointer inline-flex items-center gap-1.5"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Phê duyệt danh sách & Đính kèm QĐ
+                      </button>
+                    </div>
+                  )}
                   <table className="w-full text-left border-collapse text-xs">
-                    <thead className="bg-slate-50 border-b border-slate-200 font-bold uppercase text-slate-500">
+                    <thead className="bg-slate-50 border-b border-slate-200 font-bold uppercase text-slate-500 select-none">
                       <tr>
+                        {canManage && (
+                          <th className="px-4 py-3 w-10 text-center">
+                            <input 
+                              type="checkbox" 
+                              className="w-4 h-4 text-[#0A6EBD] rounded border-slate-300 focus:ring-[#0A6EBD] cursor-pointer"
+                              checked={selectedProjectIds.length === projects.length && projects.length > 0}
+                              onChange={handleSelectAllProjects}
+                            />
+                          </th>
+                        )}
                         <th className="px-4 py-3 w-32">Mã đề tài</th>
                         <th className="px-4 py-3 min-w-[280px]">Tên đề tài</th>
                         <th className="px-4 py-3 w-40">Chủ nhiệm</th>
@@ -434,6 +459,16 @@ function RoundDetailView({
                     <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
                       {projects.map((p) => (
                         <tr key={p.id} className="hover:bg-slate-50/50 transition">
+                          {canManage && (
+                            <td className="px-4 py-3 text-center">
+                              <input 
+                                type="checkbox" 
+                                className="w-4 h-4 text-[#0A6EBD] rounded border-slate-300 focus:ring-[#0A6EBD] cursor-pointer"
+                                checked={selectedProjectIds.includes(p.id)}
+                                onChange={() => toggleSelectProject(p.id)}
+                              />
+                            </td>
+                          )}
                           <td className="px-4 py-3 font-mono font-bold text-[#0A6EBD]">
                             {p.projectCode || p.proposalCode || 'BẢN NHÁP'}
                           </td>
@@ -512,6 +547,86 @@ function RoundDetailView({
           )}
         </div>
       </div>
+
+      {/* Batch Approve Modal */}
+      {showBatchApproveModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm">
+                <CheckCircle2 className="w-4 h-4 text-[#0A6EBD]" />
+                Phê duyệt danh sách đề xuất
+              </h3>
+              <button
+                onClick={() => setShowBatchApproveModal(false)}
+                className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleBatchApprove} className="p-6 space-y-5">
+              <div className="bg-sky-50 border border-sky-100 p-4 rounded-lg flex gap-3 text-sm">
+                <AlertCircle className="w-5 h-5 text-[#0A6EBD] shrink-0 mt-0.5" />
+                <div className="text-slate-700 leading-relaxed font-medium">
+                  Bạn đang thao tác phê duyệt hàng loạt cho <strong className="text-[#0A6EBD]">{selectedProjectIds.length}</strong> đề xuất nghiên cứu khoa học. Vui lòng đính kèm Quyết định/Tờ trình đã được phê duyệt làm minh chứng.
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Số quyết định / Tờ trình <span className="text-rose-500">*</span></label>
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="VD: 125/QĐ-BV"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0A6EBD] focus:border-[#0A6EBD] font-semibold text-slate-800"
+                      value={approveDecisionNumber}
+                      onChange={(e) => setApproveDecisionNumber(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Ngày ký <span className="text-rose-500">*</span></label>
+                    <input 
+                      type="date" 
+                      required
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0A6EBD] focus:border-[#0A6EBD] font-semibold text-slate-800"
+                      value={approveDecisionDate}
+                      onChange={(e) => setApproveDecisionDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Bản scan đính kèm (có chữ ký) <span className="text-rose-500">*</span></label>
+                  <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 flex flex-col items-center justify-center bg-slate-50/50">
+                    <FileText className="w-8 h-8 text-slate-300 mb-2" />
+                    <p className="text-sm font-semibold text-slate-600">Kéo thả file vào đây hoặc <span className="text-[#0A6EBD] cursor-pointer hover:underline">nhấn để tải lên</span></p>
+                    <p className="text-xs font-medium text-slate-400 mt-1">Hỗ trợ: PDF, JPG, PNG (Max 5MB)</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowBatchApproveModal(false)}
+                  className="px-4 py-2 text-sm font-bold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-sm font-bold text-white bg-[#0A6EBD] rounded-lg hover:bg-[#085a9c] transition cursor-pointer flex items-center gap-2 shadow-sm"
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Xác nhận phê duyệt
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -532,7 +647,7 @@ export default function RegistrationRoundsPage() {
   const [editRound, setEditRound] = useState<RegistrationRound | null>(null);
   const [showExtendModal, setShowExtendModal] = useState<RegistrationRound | null>(null);
 
-  type TabFilter = 'ALL' | 'OPEN' | 'UPCOMING' | 'CLOSED';
+  type TabFilter = 'ALL' | 'OPEN' | 'UPCOMING' | 'COMPLETED';
   const [activeTab, setActiveTab] = useState<TabFilter>('ALL');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [filterYear, setFilterYear] = useState<string>('ALL');
@@ -578,7 +693,7 @@ export default function RegistrationRoundsPage() {
       ALL: rounds.length,
       OPEN: rounds.filter((r) => r.status === 'OPEN').length,
       UPCOMING: rounds.filter((r) => r.status === 'DRAFT').length,
-      CLOSED: rounds.filter((r) => r.status === 'CLOSED').length,
+      CLOSED: rounds.filter((r) => r.status === 'COMPLETED').length,
     };
   }, [rounds]);
 
@@ -586,7 +701,7 @@ export default function RegistrationRoundsPage() {
     return rounds.filter((r) => {
       if (activeTab === 'OPEN' && r.status !== 'OPEN') return false;
       if (activeTab === 'UPCOMING' && r.status !== 'DRAFT') return false;
-      if (activeTab === 'CLOSED' && r.status !== 'CLOSED') return false;
+      if (activeTab === 'COMPLETED' && r.status !== 'COMPLETED') return false;
       if (filterYear !== 'ALL' && r.year !== Number(filterYear)) return false;
       if (searchKeyword.trim()) {
         const q = searchKeyword.toLowerCase();
@@ -612,7 +727,7 @@ export default function RegistrationRoundsPage() {
       confirmLabel: 'Đóng đợt đăng ký',
       type: 'danger',
       onConfirm: () => {
-        const updated = repo.updateRound(round.id, { status: 'CLOSED' });
+        const updated = repo.updateRound(round.id, { status: 'COMPLETED' });
         if (updated) {
           setRounds(repo.getRounds());
           success(`Đã đóng đợt đăng ký đề tài ${round.code} thành công.`);
@@ -845,7 +960,7 @@ export default function RegistrationRoundsPage() {
           { id: 'ALL', label: 'Tất cả' },
           { id: 'OPEN', label: 'Đang mở' },
           { id: 'UPCOMING', label: 'Sắp mở' },
-          { id: 'CLOSED', label: 'Đã đóng' },
+          { id: 'COMPLETED', label: 'Đã đóng' },
         ].map((t) => (
           <button
             key={t.id}
@@ -913,14 +1028,14 @@ export default function RegistrationRoundsPage() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
-            <thead className="bg-[#F8FAFC] border-b border-slate-200 font-bold uppercase tracking-wider text-slate-500 select-none">
+            <thead className="bg-[#0B2A63] border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-white select-none">
               <tr>
-                <th className="px-5 py-3.5 w-32 whitespace-nowrap">Mã đợt</th>
-                <th className="px-5 py-3.5 min-w-[320px]">Tên đợt đăng ký</th>
-                <th className="px-5 py-3.5 w-44 whitespace-nowrap">Thời gian tiếp nhận</th>
-                <th className="px-5 py-3.5 w-32 text-center whitespace-nowrap">Hồ sơ</th>
-                <th className="px-5 py-3.5 w-32 whitespace-nowrap">Trạng thái</th>
-                <th className="px-5 py-3.5 w-16 text-center">Thao tác</th>
+                <th className="px-5 py-3.5 w-32 whitespace-nowrap">MÃ ĐỢT</th>
+                <th className="px-5 py-3.5 min-w-[320px]">TÊN ĐỢT ĐĂNG KÝ</th>
+                <th className="px-5 py-3.5 w-44 whitespace-nowrap">THỜI GIAN TIẾP NHẬN</th>
+                <th className="px-5 py-3.5 w-32 text-center whitespace-nowrap">HỒ SƠ</th>
+                <th className="px-5 py-3.5 w-32 whitespace-nowrap">TRẠNG THÁI</th>
+                <th className="px-5 py-3.5 w-16 text-center">THAO TÁC</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">

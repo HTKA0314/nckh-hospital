@@ -21,7 +21,7 @@ interface AuthContextType {
    *
    * Không dùng hàm này để cấp quyền nghiệp vụ.
    */
-  switchRole: (role: Role) => void;
+  switchRole: (role: Role, userFullName?: string) => void;
 
   allUsers: User[];
 }
@@ -86,9 +86,14 @@ export function AuthProvider({
     );
   };
 
-  const switchRole = (role: Role) => {
+  const switchRole = (role: Role, userFullName?: string) => {
+    const cleanStr = (s: string) => s.replace(/[\.\s]/g, '').toLowerCase();
     const userWithRole = allUsers.find(
-      (user) => user.role === role
+      (user) =>
+        user.role === role &&
+        (!userFullName ||
+          cleanStr(user.fullName).includes(cleanStr(userFullName)) ||
+          cleanStr(userFullName).includes(cleanStr(user.fullName)))
     );
 
     if (!userWithRole) {

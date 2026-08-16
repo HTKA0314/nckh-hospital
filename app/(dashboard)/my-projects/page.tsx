@@ -111,13 +111,13 @@ function getNextStepText(project: ResearchProject, isPI: boolean): string {
   }
 
   switch (project.status) {
-    case 'WAITING_ASSIGNMENT':
+    case 'APPROVED_PENDING_CONTRACT':
       return 'Chờ quyết định giao thực hiện';
     case 'IN_PROGRESS':
       return project.acceptanceDossier
         ? 'Tiếp tục thực hiện và báo cáo tiến độ'
         : 'Thực hiện đề tài; có thể lập hồ sơ nghiệm thu khi đủ điều kiện';
-    case 'WAITING_ACCEPTANCE':
+    case 'CLOSING_SUBMITTED':
       if (project.acceptanceDossier?.status === 'REVISION_REQUIRED') {
         return 'Bổ sung hồ sơ nghiệm thu';
       }
@@ -125,19 +125,19 @@ function getNextStepText(project: ResearchProject, isPI: boolean): string {
         return 'Chờ Hội đồng nghiệm thu';
       }
       return 'Theo dõi xử lý hồ sơ nghiệm thu';
-    case 'ACCEPTED':
+    case 'COMPLETED':
       return 'Chờ quyết định công nhận kết quả';
-    case 'RECOGNIZED':
+    case 'COMPLETED':
       return 'Kết quả đã được công nhận';
-    case 'CLOSED':
+    case 'COMPLETED':
       return 'Hồ sơ đã đóng';
-    case 'ARCHIVED':
+    case 'COMPLETED':
       return 'Hồ sơ đã lưu trữ';
-    case 'SUSPENDED':
+    case 'EXTENSION_REQUESTED':
       return 'Đề tài đang tạm dừng';
     case 'TERMINATED':
       return 'Đề tài đã chấm dứt';
-    case 'REJECTED':
+    case 'SCREENING_FAILED':
       return 'Đề tài không được tiếp tục';
     default:
       return 'Theo dõi tiến trình xử lý';
@@ -161,7 +161,7 @@ function isActionRequired(project: ResearchProject, isPI: boolean): boolean {
   }
 
   if (
-    project.status === 'WAITING_ACCEPTANCE' &&
+    project.status === 'CLOSING_SUBMITTED' &&
     project.acceptanceDossier?.status === 'REVISION_REQUIRED'
   ) {
     return true;
@@ -248,7 +248,7 @@ function PrimaryAction({
   }
 
   if (
-    project.status === 'WAITING_ACCEPTANCE' &&
+    project.status === 'CLOSING_SUBMITTED' &&
     project.acceptanceDossier?.status === 'REVISION_REQUIRED'
   ) {
     return (
@@ -317,7 +317,7 @@ function MoreActions({
             Xem chi tiết hồ sơ
           </Link>
 
-          {isPI && ['IN_PROGRESS', 'SUSPENDED'].includes(project.status) && (
+          {isPI && ['IN_PROGRESS', 'EXTENSION_REQUESTED'].includes(project.status) && (
             <Link
               href={`/projects/${project.id}/change-requests`}
               onClick={onClose}
@@ -464,14 +464,14 @@ export default function MyProjectsPage() {
       processing: rows.filter(
         (row) =>
           row.status === 'SUBMITTED' ||
-          row.status === 'WAITING_ASSIGNMENT' ||
-          row.status === 'WAITING_ACCEPTANCE'
+          row.status === 'APPROVED_PENDING_CONTRACT' ||
+          row.status === 'CLOSING_SUBMITTED'
       ).length,
       in_progress: rows.filter(
         (row) => row.status === 'IN_PROGRESS'
       ).length,
       completed: rows.filter((row) =>
-        ['RECOGNIZED', 'CLOSED', 'ARCHIVED'].includes(row.status)
+        ['COMPLETED', 'COMPLETED', 'COMPLETED'].includes(row.status)
       ).length,
     }),
     [rows]
@@ -488,8 +488,8 @@ export default function MyProjectsPage() {
           activeTab === 'processing' &&
           ![
             'SUBMITTED',
-            'WAITING_ASSIGNMENT',
-            'WAITING_ACCEPTANCE',
+            'APPROVED_PENDING_CONTRACT',
+            'CLOSING_SUBMITTED',
           ].includes(project.status)
         ) {
           return false;
@@ -504,7 +504,7 @@ export default function MyProjectsPage() {
 
         if (
           activeTab === 'completed' &&
-          !['RECOGNIZED', 'CLOSED', 'ARCHIVED'].includes(project.status)
+          !['COMPLETED', 'COMPLETED', 'COMPLETED'].includes(project.status)
         ) {
           return false;
         }
@@ -842,6 +842,7 @@ export default function MyProjectsPage() {
                   <th className="min-w-[180px] px-4 py-3">Chủ nhiệm</th>
                   <th className="w-32 px-4 py-3 text-center">Ngày đăng ký</th>
                   <th className="w-24 px-4 py-3 text-center">Gia hạn</th>
+                  <th className="w-36 px-4 py-3 text-center">Trạng thái</th>
                   <th className="w-24 px-4 py-3 text-center">Thao tác</th>
                 </tr>
               </thead>
@@ -850,7 +851,7 @@ export default function MyProjectsPage() {
                 {pagedRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-4 py-12 text-center text-slate-400"
                     >
                       Không có đề tài phù hợp.
@@ -918,6 +919,10 @@ export default function MyProjectsPage() {
                           ) : (
                             <span className="font-mono text-[11px] text-slate-400">0</span>
                           )}
+                        </td>
+
+                        <td className="px-4 py-3 text-center align-top whitespace-nowrap">
+                          <StatusBadge status={project.displayStatus} type={project.displayStatusType} />
                         </td>
 
                         <td className="px-4 py-3 text-center align-top">

@@ -113,7 +113,7 @@ export default function ReportsPage() {
       <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-[13px]">
-            <thead className="bg-[#F8FAFC] border-b border-slate-200/80 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <thead className="bg-[#0B2A63] border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-white select-none">
               <tr>
                 <th className="px-4 py-3 whitespace-nowrap">KHOA / PHÒNG / TRUNG TÂM</th>
                 <th className="px-4 py-3 text-center w-32 whitespace-nowrap">TỔNG SỐ ĐỀ TÀI</th>

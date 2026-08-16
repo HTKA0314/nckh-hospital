@@ -47,7 +47,7 @@ export type ResearchMemberRole =
   | 'KỸ_THUẬT_VIÊN'
   | 'CỘNG_TÁC_VIÊN';
 
-export type RegistrationRoundStatus = 'DRAFT' | 'OPEN' | 'CLOSED';
+export type RegistrationRoundStatus = 'DRAFT' | 'OPEN' | 'COMPLETED';
 
 export type RegistrationRound = {
   id: string;
@@ -67,18 +67,78 @@ export type RegistrationRound = {
 };
 
 export type ProjectStatus =
-  | 'DRAFT'                 // Bản nháp
-  | 'SUBMITTED'             // Đã nộp hồ sơ (giai đoạn thẩm định, ra hội đồng do ProposalFlow quản lý)
-  | 'WAITING_ASSIGNMENT'    // Chờ quyết định giao thực hiện (Proposal & Ethics đã duyệt)
-  | 'IN_PROGRESS'           // Quyết định giao đã ban hành, đang triển khai nghiên cứu
-  | 'WAITING_ACCEPTANCE'    // Đã nộp hồ sơ nghiệm thu
-  | 'ACCEPTED'              // Hội đồng Nghiệm thu thông qua
-  | 'RECOGNIZED'            // Quyết định công nhận kết quả đã ban hành
-  | 'CLOSED'                // Hoàn tất các điều kiện đóng hồ sơ theo policy
-  | 'ARCHIVED'              // Lưu trữ dài hạn
-  | 'SUSPENDED'             // Tạm dừng (có thể tiếp tục)
-  | 'TERMINATED'            // Chấm dứt có quyết định
-  | 'REJECTED';             // Bị từ chối
+  | 'DRAFT' // Bản nháp đề xuất
+  | 'SUBMITTED' // Đã nộp đề xuất
+  | 'SCREENING_FAILED' // Phòng NCKH trả về từ vòng hồ sơ
+  | 'CONCEPT_APPROVED' // Ban giám đốc duyệt chủ trương
+  | 'PROPOSAL_SUBMITTED' // Đã nộp đề cương & dự toán chi tiết
+  | 'IRB_REVIEWING' // Đang duyệt hội đồng Khoa học / Đạo đức
+  | 'REVISION_REQUIRED' // Yêu cầu sửa đề cương / cắt giảm kinh phí
+  | 'APPROVED_PENDING_CONTRACT' // Đã thông qua hội đồng, chờ ký QĐ giao việc
+  | 'IN_PROGRESS' // Đang thực hiện
+  | 'EXTENSION_REQUESTED' // Đang xin gia hạn hoặc xin điều chỉnh kinh phí
+  | 'CLOSING_SUBMITTED' // Đã nộp hồ sơ nghiệm thu & quyết toán
+  | 'COMPLETED' // Đã nghiệm thu thành công (Có QĐ công nhận)
+  | 'TERMINATED'; // Đề tài bị hủy / dừng thực hiện giữa chừng
+
+export enum BudgetCategory {
+  REMUNERATION = 'REMUNERATION',   // Thù lao chất xám (Chủ nhiệm, thành viên, thư ký, chuyên gia thống kê)
+  LAB_TESTING = 'LAB_TESTING',     // Chi phí xét nghiệm / Cận lâm sàng (Áp theo danh mục giá viện phí)
+  CONSUMABLES = 'CONSUMABLES',     // Vật tư tiêu hao, hóa chất, dụng cụ y tế chuyên dụng
+  CONFERENCE_TRAVEL = 'CONFERENCE_TRAVEL', // Hội thảo, tọa đàm khoa học, đi công tác thu thập mẫu
+  OTHER_SERVICES = 'OTHER_SERVICES' // Chi phí khác (In ấn bệnh án mẫu, hỗ trợ bệnh nhân tái khám, phần mềm SPSS...)
+}
+
+export enum TransactionType {
+  ADVANCE = 'ADVANCE',       // Phiếu xin tạm ứng kinh phí
+  SETTLEMENT = 'SETTLEMENT', // Phiếu xin quyết toán cuối kỳ
+  RECOVERY = 'RECOVERY',     // Phiếu thu hồi kinh phí thừa (nếu thực tế chi ít hơn tạm ứng)
+  ADJUSTMENT = 'ADJUSTMENT'  // Phiếu điều chỉnh tăng/giảm dự toán
+}
+
+export enum TransactionStatus {
+  PENDING_SCIENCE = 'PENDING_SCIENCE',       // Chờ Phòng Quản lý Khoa học xác nhận tiến độ
+  PENDING_ACCOUNTING = 'PENDING_ACCOUNTING',   // Chờ Phòng Tài chính Kế toán thẩm định hồ sơ
+  PENDING_DIRECTOR = 'PENDING_DIRECTOR',       // Chờ Ban Giám đốc ký duyệt chi
+  APPROVED = 'APPROVED',                       // Đã phê duyệt chứng từ, chờ thủ quỹ chi tiền
+  REJECTED = 'SCREENING_FAILED',                       // Bị từ chối phê duyệt (phải có lý do)
+  PAID = 'PAID'                                // Đã giải ngân / Đã thực chi (Kết thúc 1 transaction)
+}
+
+export interface BudgetLineItem {
+  id: string;
+  category: BudgetCategory;
+  itemName: string;        // Tên hạng mục (ví dụ: Chụp MRI 1.5 Tesla, Xét nghiệm Công thức máu)
+  unitPrice: number;       // Đơn giá
+  quantity: number;        // Số lượng mẫu / Người
+  totalAmount: number;     // Thành tiền (= Đơn giá * Số lượng)
+  approvedAmount?: number; // Số tiền thực tế được Hội đồng phê duyệt sau khi cắt giảm
+  note?: string;           // Ghi chú lý do cắt giảm hoặc mô tả chi tiết
+}
+
+export interface FinancialTransaction {
+  id: string;
+  projectId: string;
+  type: TransactionType;
+  category?: BudgetCategory;  // Hạng mục dự toán mà phiếu này đang xin rút tiền/tạm ứng/quyết toán
+  status: TransactionStatus;
+  amount: number;             // Số tiền đề xuất trong phiếu
+  requestedBy: string;        // ID người tạo phiếu (Chủ nhiệm đề tài)
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  approvedBy?: string;        // ID người duyệt cuối cùng (Lãnh đạo BV)
+  rejectionReason?: string;   // Lý do từ chối nếu status là REJECTED
+  attachmentUrls: string[];   // Link hóa đơn, chứng từ, bệnh án đính kèm để kế toán kiểm tra
+}
+
+export interface ProjectFinancialSummary {
+  totalApprovedBudget: number;  // Tổng kinh phí được Ban Giám đốc duyệt ban đầu
+  totalAdvanced: number;        // Tổng số tiền đã tạm ứng thực tế (Cộng dồn từ các phiếu ADVANCE có status PAID)
+  totalSettled: number;         // Tổng số tiền đã quyết toán (Từ phiếu SETTLEMENT có status PAID)
+  remainingBudget: number;      // Kinh phí còn lại được phép sử dụng (= totalApprovedBudget - totalAdvanced)
+  budgetDetails: BudgetLineItem[]; // Chi tiết bảng dự toán kinh phí ban đầu
+  transactions: FinancialTransaction[]; // Toàn bộ lịch sử phiếu thu/chi của đề tài này
+}
 
 
 export type ProposalStatus =
@@ -98,7 +158,7 @@ export type ProposalStatus =
   | 'PROPOSAL_RESUBMITTED'
   | 'UNDER_PROPOSAL_REVISION_REVIEW'
   | 'PROPOSAL_APPROVED'
-  | 'REJECTED';                       // Từ chối
+  | 'SCREENING_FAILED';                       // Từ chối
 
 export type EthicsStatus =
   | 'NOT_REQUIRED'                // Sàng lọc xác định không cần IRB
@@ -135,7 +195,7 @@ export type ProgressReportStatus =
   | 'UNDER_REVIEW'
   | 'APPROVED'
   | 'REVISION_REQUIRED'
-  | 'REJECTED';
+  | 'SCREENING_FAILED';
 
 export type ChangeRequestStatus =
   | 'DRAFT'
@@ -172,7 +232,7 @@ export type FinanceStatus =
   | 'ACTIVE'                // Đang thực hiện chi tiêu
   | 'AWAITING_FINALIZATION' // Đang quyết toán
   | 'FINALIZED'             // Đã quyết toán xong
-  | 'CLOSED';               // Đã đóng tài chính hoàn toàn
+  | 'COMPLETED';               // Đã đóng tài chính hoàn toàn
 
 export type MilestoneStatus =
   | 'NOT_STARTED'
@@ -192,7 +252,7 @@ export type ContractStatus =
   | 'SIGNED'
   | 'ACTIVE'
   | 'LIQUIDATED'
-  | 'CLOSED';
+  | 'COMPLETED';
 
 
 export type ResearchMember = {
@@ -297,7 +357,7 @@ export type SubmissionVersion = {
   submittedByName: string;
   changeSummary: string;
   isCurrent: boolean;                            // Phiên bản đang có hiệu lực
-  status: 'ACTIVE' | 'SUPERSEDED' | 'REJECTED'; // Trạng thái phiên bản
+  status: 'ACTIVE' | 'SUPERSEDED' | 'SCREENING_FAILED'; // Trạng thái phiên bản
   parentVersionId?: string;                      // Nguồn gốc phiên bản trước
   structuredDataSnapshot: Record<string, unknown>;
   documents: DocumentVersion[];
@@ -373,7 +433,7 @@ export type WorkItem = {
  * AcceptanceEvaluation – Kết quả đánh giá của Hội đồng Nghiệm thu
  * Tách biệt khỏi AcceptanceDossierStatus; SM-7 dừng ở FORWARDED_TO_COUNCIL.
  */
-export type AcceptanceConclusion = 'ACCEPTED' | 'CONDITIONALLY_ACCEPTED' | 'REJECTED';
+export type AcceptanceConclusion = 'COMPLETED' | 'CONDITIONALLY_ACCEPTED' | 'SCREENING_FAILED';
 
 export type AcceptanceEvaluation = {
   id: string;
@@ -392,7 +452,7 @@ export type ProposalEvaluation = {
   id: string;
   projectId: string;
   councilId: string;
-  conclusion: 'APPROVED' | 'APPROVED_WITH_REVISION' | 'REJECTED';
+  conclusion: 'APPROVED' | 'APPROVED_WITH_REVISION' | 'SCREENING_FAILED';
   averageScore?: number;
   revisionRequirements?: string;
   concludedAt: string;
@@ -659,7 +719,7 @@ export type EvaluationResult = {
 export type CouncilConclusion =
   | 'APPROVED'
   | 'APPROVED_WITH_REVISION'
-  | 'REJECTED'
+  | 'SCREENING_FAILED'
   | 'RE_EVALUATE';
 
 export type MeetingMinutesStatus =
@@ -939,7 +999,7 @@ export type ResearchProject = {
   acceptanceDossier?: AcceptanceDossier;
   proposalEvaluations?: ProposalEvaluation[];
   acceptanceEvaluations?: AcceptanceEvaluation[];
-  financialSummary?: FinancialSummary;
+  financial?: ProjectFinancialSummary;
   decisions: Decision[];
   contract?: ResearchContract;               // Tuỳ chọn
   closure?: ProjectClosure;

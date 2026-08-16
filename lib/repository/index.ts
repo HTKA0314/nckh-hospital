@@ -814,10 +814,63 @@ class MockRepository {
       updatedAt: confirmedAt,
     };
 
-    this.updateCouncil(councilId, { minutes: [confirmed], status: 'CONCLUDED' });
-    this.applyCouncilConclusions(council, confirmed, actor);
+    this.updateCouncil(councilId, { minutes: [confirmed], status: 'MINUTES_DRAFTED' });
 
     return confirmed;
+  }
+
+  /**
+   * Ký biên bản họp (sau khi Chủ tịch đã xác nhận).
+   * - Thư ký ký → ghi secretarySignedAt.
+   * - Chủ tịch ký → ghi chairSignedAt.
+   * Khi cả hai đã ký → minutes.status chuyển SIGNED và áp dụng kết luận lên đề tài.
+   */
+  signCouncilMeetingMinutes(
+    councilId: string,
+    signerUserId: string
+  ): MeetingMinutes | undefined {
+    const council = this.getCouncilById(councilId);
+    const signer = this.getUserById(signerUserId);
+    const minutes = this.getCouncilMeetingMinutes(councilId);
+
+    if (!council || !signer || !minutes) return undefined;
+    if (minutes.status !== 'CONFIRMED' && minutes.status !== 'SIGNED') return undefined;
+
+    const secretaryMember = council.members.find(
+      (member) => member.roleInCouncil === 'THƯ_KÝ'
+    );
+    const chairMember = council.members.find(
+      (member) => member.roleInCouncil === 'CHỦ_TỊCH'
+    );
+
+    const isSecretary = secretaryMember?.userId === signerUserId;
+    const isChair = chairMember?.userId === signerUserId;
+
+    if (!isSecretary && !isChair) return undefined;
+
+    const now = new Date().toISOString();
+    const updated: MeetingMinutes = {
+      ...minutes,
+      secretarySignedAt: isSecretary ? now : minutes.secretarySignedAt,
+      chairSignedAt: isChair ? now : minutes.chairSignedAt,
+      updatedAt: now,
+    };
+
+    // Khi cả hai đã ký → trạng thái SIGNED
+    if (updated.secretarySignedAt && updated.chairSignedAt) {
+      updated.status = 'SIGNED';
+    }
+
+    this.updateCouncil(councilId, {
+      minutes: [updated],
+      ...(updated.status === 'SIGNED' ? { status: 'CONCLUDED' } : {}),
+    });
+
+    if (updated.status === 'SIGNED') {
+      this.applyCouncilConclusions(council, updated, signer);
+    }
+
+    return updated;
   }
 
   private applyCouncilConclusions(
@@ -849,8 +902,8 @@ class MockRepository {
         const proposalStatus =
           result.conclusion === 'APPROVED'
             ? 'PROPOSAL_APPROVED'
-            : result.conclusion === 'REJECTED'
-              ? 'REJECTED'
+            : result.conclusion === 'SCREENING_FAILED'
+              ? 'SCREENING_FAILED'
               : 'PROPOSAL_REVISION_REQUIRED';
 
         this.updateProject(result.projectId, {
@@ -858,9 +911,9 @@ class MockRepository {
           proposalStatus,
           status:
             result.conclusion === 'APPROVED'
-              ? 'WAITING_ASSIGNMENT'
-              : result.conclusion === 'REJECTED'
-                ? 'REJECTED'
+              ? 'APPROVED_PENDING_CONTRACT'
+              : result.conclusion === 'SCREENING_FAILED'
+                ? 'SCREENING_FAILED'
                 : project.status,
         });
         return;
@@ -868,9 +921,9 @@ class MockRepository {
 
       const acceptanceConclusion: AcceptanceEvaluation['conclusion'] =
         result.conclusion === 'APPROVED'
-          ? 'ACCEPTED'
-          : result.conclusion === 'REJECTED'
-            ? 'REJECTED'
+          ? 'COMPLETED'
+          : result.conclusion === 'SCREENING_FAILED'
+            ? 'SCREENING_FAILED'
             : 'CONDITIONALLY_ACCEPTED';
 
       const acceptanceEvaluation: AcceptanceEvaluation = {
@@ -897,14 +950,15 @@ class MockRepository {
         ...(project.acceptanceEvaluations || []).filter((item) => item.councilId !== council.id),
       ];
 
-      if (acceptanceConclusion === 'ACCEPTED') {
+      if (acceptanceConclusion === 'COMPLETED') {
         this.updateProject(result.projectId, {
           acceptanceEvaluations,
-          status: 'ACCEPTED',
+          status: 'COMPLETED',
         });
       } else if (acceptanceConclusion === 'CONDITIONALLY_ACCEPTED' && project.acceptanceDossier) {
         this.updateProject(result.projectId, {
           acceptanceEvaluations,
+          status: 'COMPLETED',
           acceptanceDossier: {
             ...project.acceptanceDossier,
             postAcceptanceRevisions: [
@@ -1048,6 +1102,7 @@ class MockRepository {
         'NOT_REQUIRED',
         'DOSSIER_SUBMITTED',
         'WITHDRAWN',
+        'EXEMPTED',
       ],
       DOSSIER_SUBMITTED: [
         'UNDER_ETHICS_REVIEW',
@@ -1406,7 +1461,7 @@ class MockRepository {
       ).length,
 
       waitingAssignment: allProjects.filter(
-        (project) => project.status === 'WAITING_ASSIGNMENT'
+        (project) => project.status === 'APPROVED_PENDING_CONTRACT'
       ).length,
 
       inProgressProjects: allProjects.filter(
@@ -1415,7 +1470,7 @@ class MockRepository {
 
       waitingAcceptance: allProjects.filter(
         (project) =>
-          project.status === 'WAITING_ACCEPTANCE' ||
+          project.status === 'CLOSING_SUBMITTED' ||
           project.acceptanceDossier?.status === 'SUBMITTED' ||
           project.acceptanceDossier?.status === 'RESUBMITTED' ||
           project.acceptanceDossier?.status === 'UNDER_ADMIN_REVIEW' ||
@@ -1424,14 +1479,11 @@ class MockRepository {
       ).length,
 
       acceptedProjects: allProjects.filter(
-        (project) => project.status === 'ACCEPTED'
+        (project) => project.status === 'COMPLETED'
       ).length,
 
       completedProjects: allProjects.filter(
-        (project) =>
-          project.status === 'RECOGNIZED' ||
-          project.status === 'CLOSED' ||
-          project.status === 'ARCHIVED'
+        (project) => project.status === 'COMPLETED'
       ).length,
 
       myProjectsCount: myProjects.length,

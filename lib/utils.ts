@@ -98,6 +98,8 @@ export function getEthicsStatusDisplayName(status: string): string {
   switch (status) {
     case 'NOT_REQUIRED':
       return 'Không thuộc diện';
+    case 'EXEMPTED':
+      return 'Miễn thẩm định';
     case 'DOSSIER_SUBMITTED':
       return 'Đã nộp hồ sơ';
     case 'UNDER_ETHICS_REVIEW':
@@ -125,7 +127,7 @@ export function getProposalStatusDisplayName(status: string): string {
       return 'Đã nộp lại';
     case 'VALID':
       return 'Hồ sơ hợp lệ';
-    case 'REJECTED':
+    case 'SCREENING_FAILED':
       return 'Từ chối tiếp nhận';
     default:
       return status;

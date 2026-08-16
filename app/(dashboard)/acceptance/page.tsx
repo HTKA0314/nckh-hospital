@@ -95,7 +95,7 @@ export default function GlobalAcceptancePage() {
     setIsMounted(true);
     const allProjects = repo.getProjects();
     const targetProjects = allProjects.filter(
-      (p) => p.status === 'WAITING_ACCEPTANCE' || ['ACCEPTED', 'RECOGNIZED', 'CLOSED', 'ARCHIVED'].includes(p.status) || ['proj-08', 'proj-09', 'proj-10'].includes(p.id)
+      (p) => p.status === 'CLOSING_SUBMITTED' || ['COMPLETED', 'CANCELLED', 'SUSPENDED'].includes(p.status) || ['proj-08', 'proj-09', 'proj-10'].includes(p.id)
     );
 
     const mapped: AcceptanceProject[] = targetProjects.map((p) => {
@@ -109,8 +109,9 @@ export default function GlobalAcceptancePage() {
       if (p.acceptanceDossier?.status) {
         const dStatus = p.acceptanceDossier.status;
         if (dStatus === 'REVISION_REQUIRED') acceptanceStatus = 'REVISION_REQUIRED';
-        else if (dStatus === 'ELIGIBLE_FOR_ACCEPTANCE') acceptanceStatus = 'ELIGIBLE';
+        else if (dStatus === 'ELIGIBLE_FOR_ACCEPTANCE' || dStatus === ('ELIGIBLE' as any)) acceptanceStatus = 'ELIGIBLE';
         else if (dStatus === 'FORWARDED_TO_COUNCIL') acceptanceStatus = 'FORWARDED';
+        
         if (p.acceptanceDossier.reviewComment) comment = p.acceptanceDossier.reviewComment;
       } else {
         if (p.id === 'proj-08') {
@@ -124,7 +125,7 @@ export default function GlobalAcceptancePage() {
           docCount = 'Đầy đủ';
           deadline = '—';
           comment = 'Hồ sơ đầy đủ hợp lệ. Đủ điều kiện đưa ra Hội đồng nghiệm thu.';
-        } else if (['ACCEPTED', 'RECOGNIZED', 'CLOSED', 'ARCHIVED'].includes(p.status)) {
+        } else if (['COMPLETED', 'CANCELLED', 'SUSPENDED'].includes(p.status)) {
           acceptanceStatus = 'PROCESSED';
           docCount = 'Đầy đủ';
           deadline = '—';
@@ -199,7 +200,7 @@ export default function GlobalAcceptancePage() {
       repo.updateProject(selectedProject.id, {
         acceptanceDossier: {
           ...(projectRecord.acceptanceDossier || { id: `dossier-${Date.now()}`, claimedOverallCompletionPercentage: 100 }),
-          status: newStatus === 'FORWARDED' ? 'FORWARDED_TO_COUNCIL' : newStatus,
+          status: newStatus === 'FORWARDED' ? 'FORWARDED_TO_COUNCIL' : newStatus === 'ELIGIBLE' ? 'ELIGIBLE_FOR_ACCEPTANCE' : newStatus,
           reviewComment: commentText,
           updatedAt: new Date().toISOString(),
         } as any,

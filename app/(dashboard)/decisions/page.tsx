@@ -14,6 +14,7 @@ import {
   Plus,
   X,
   ChevronRight,
+  Eye,
 } from 'lucide-react';
 import { CreateDecisionModal } from './CreateDecisionModal';
 
@@ -42,6 +43,7 @@ export default function DecisionsManagementPage() {
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [activeTab, setActiveTab] = useState<DecisionTab>('ALL');
   const [typeFilter, setTypeFilter] = useState<DecisionTypeFilter>('ALL');
+  const [yearFilter, setYearFilter] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createDecisionType, setCreateDecisionType] = useState<'ASSIGNMENT' | 'RECOGNITION'>('ASSIGNMENT');
@@ -63,6 +65,7 @@ export default function DecisionsManagementPage() {
     return decisions.filter((decision) => {
       if (activeTab !== 'ALL' && decision.status !== activeTab) return false;
       if (typeFilter !== 'ALL' && decision.type !== typeFilter) return false;
+      if (yearFilter !== 'ALL' && !decision.createdAt.startsWith(yearFilter)) return false;
 
       if (!query) return true;
       const project = projects.find((item) => item.id === decision.projectId);
@@ -204,31 +207,43 @@ export default function DecisionsManagementPage() {
         <select
           value={typeFilter}
           onChange={(event) => setTypeFilter(event.target.value as DecisionTypeFilter)}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-semibold outline-none"
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-semibold outline-none focus:border-[#0A6EBD]"
         >
-          <option value="ALL">Tất cả loại quyết định</option>
+          <option value="ALL">Loại quyết định</option>
           <option value="ASSIGNMENT">Giao thực hiện</option>
           <option value="RECOGNITION">Công nhận kết quả</option>
+        </select>
+        <select
+          value={yearFilter}
+          onChange={(event) => setYearFilter(event.target.value)}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-semibold outline-none focus:border-[#0A6EBD]"
+        >
+          <option value="ALL">Năm tạo</option>
+          <option value="2026">2026</option>
+          <option value="2025">2025</option>
+          <option value="2024">2024</option>
         </select>
       </section>
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left">
-            <thead className="bg-[#0B2A63] text-[11px] font-bold uppercase text-white">
+            <thead className="bg-[#0B2A63] text-[11px] font-bold uppercase text-white tracking-wider">
               <tr>
-                <th className="w-44 p-3">Loại quyết định</th>
-                <th className="w-36 p-3">Số quyết định</th>
-                <th className="min-w-[320px] p-3">Đề tài</th>
-                <th className="w-36 p-3">Ngày lập</th>
+                <th className="w-36 p-3">Loại quyết định</th>
+                <th className="w-32 p-3">Số quyết định</th>
+                <th className="min-w-[280px] p-3">Đề tài</th>
+                <th className="w-36 p-3">Người trình</th>
+                <th className="w-28 p-3 text-center">Ngày tạo</th>
+                <th className="w-28 p-3 text-center">Ngày ký</th>
                 <th className="w-32 p-3 text-center">Trạng thái</th>
-                <th className="w-28 p-3 text-center">Thao tác</th>
+                <th className="w-24 p-3 text-center">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredDecisions.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-10 text-center text-slate-400">Không có quyết định phù hợp.</td>
+                  <td colSpan={8} className="p-10 text-center text-slate-400">Không có quyết định phù hợp.</td>
                 </tr>
               ) : (
                 filteredDecisions.map((decision) => {
@@ -236,34 +251,37 @@ export default function DecisionsManagementPage() {
                   return (
                     <tr key={decision.id} className="hover:bg-slate-50">
                       <td className="p-3 align-middle font-bold text-slate-900">
-                        <span className="inline-flex items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                           {decision.type === 'ASSIGNMENT' ? <FileCheck className="h-3.5 w-3.5 text-[#0A6EBD]" /> : <Award className="h-3.5 w-3.5 text-emerald-600" />}
-                          {decision.type === 'ASSIGNMENT' ? 'Giao thực hiện' : 'Công nhận kết quả'}
+                          {decision.type === 'ASSIGNMENT' ? 'Giao TH' : 'Công nhận'}
                         </span>
                       </td>
                       <td className="p-3 align-middle font-mono font-bold text-[#0A6EBD]">
                         {decision.decisionNumber || <span className="font-normal italic text-slate-400">Chưa cấp số</span>}
                       </td>
                       <td className="p-3 align-middle">
-                        <Link href={`/decisions/${decision.id}`} className="font-bold leading-snug text-slate-900 hover:text-[#0A6EBD]">
-                          {project?.title || decision.projectId}
-                        </Link>
-                        <p className="mt-0.5 text-[11px] text-slate-500">
-                          {project?.projectCode || project?.proposalCode || '—'} • {project?.principalInvestigatorName || '—'} • {project?.departmentName || '—'}
-                        </p>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-mono font-bold text-slate-500 mb-0.5">
+                            {project?.projectCode || project?.proposalCode || '—'}
+                          </span>
+                          <Link href={`/decisions/${decision.id}`} className="font-bold leading-snug text-slate-900 hover:text-[#0A6EBD] line-clamp-2">
+                            {project?.title || decision.projectId}
+                          </Link>
+                        </div>
                       </td>
-                      <td className="p-3 align-middle font-mono text-slate-500">{formatDate(decision.createdAt)}</td>
+                      <td className="p-3 align-middle font-semibold text-slate-600">
+                        {decision.history?.find(h => h.action === 'DRAFT_CREATED' || h.action === 'SUBMITTED_FOR_SIGNATURE')?.actorName || '—'}
+                      </td>
+                      <td className="p-3 align-middle font-mono text-center text-slate-500">{formatDate(decision.createdAt)}</td>
+                      <td className="p-3 align-middle font-mono text-center text-slate-700 font-semibold">{decision.signedDate ? formatDate(decision.signedDate) : '—'}</td>
                       <td className="p-3 text-center align-middle">
-                        <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${STATUS_CLASS[decision.status]}`}>
+                        <span className={`inline-flex rounded-md border px-2.5 py-0.5 text-[10px] font-bold ${STATUS_CLASS[decision.status]}`}>
                           {STATUS_LABEL[decision.status]}
                         </span>
                       </td>
                       <td className="p-3 text-center align-middle">
-                        <Link
-                          href={`/decisions/${decision.id}`}
-                          className="inline-flex items-center gap-1 rounded-lg bg-[#0A6EBD] px-2.5 py-1 font-bold text-white hover:bg-[#085896]"
-                        >
-                          {getActionLabel(decision)} <ChevronRight className="h-3 w-3" />
+                        <Link href={`/decisions/${decision.id}`} title="Xem chi tiết" className="inline-flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 bg-white p-1.5 hover:bg-sky-50 hover:text-[#0A6EBD] hover:border-sky-200 transition shadow-2xs">
+                          <Eye className="w-4 h-4" />
                         </Link>
                       </td>
                     </tr>

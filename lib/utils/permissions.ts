@@ -4,20 +4,6 @@ import {
   User,
 } from '@/lib/types';
 
-/**
- * Permission helpers
- *
- * Nguyên tắc:
- * - Role chỉ xác định nhóm quyền nghiệp vụ.
- * - Quyền thao tác cụ thể phải kết hợp:
- *   role + ownership + entity membership + workflow state.
- * - ADMIN không tự động kế thừa quyền nghiệp vụ.
- */
-
-/* =========================================================
- * PROPOSAL / ADMINISTRATIVE REVIEW
- * ======================================================= */
-
 export function canReviewProposal(
   user?: User | null
 ): boolean {
@@ -26,10 +12,6 @@ export function canReviewProposal(
   return user.role === 'RESEARCH_OFFICE';
 }
 
-/**
- * Chủ nhiệm chỉ được nộp lại hồ sơ của chính mình
- * và đúng trạng thái được yêu cầu bổ sung/chỉnh sửa.
- */
 export function canSubmitResubmission(
   user?: User | null,
   project?: ResearchProject | null
@@ -48,10 +30,6 @@ export function canSubmitResubmission(
     project.proposalStatus === 'PROPOSAL_REVISION_REQUIRED'
   );
 }
-
-/* =========================================================
- * SCIENTIFIC COUNCIL
- * ======================================================= */
 
 function getCouncilMember(
   user?: User | null,
@@ -243,7 +221,7 @@ export function canSubmitAcceptanceDossier(
     !project.acceptanceDossier;
 
   const resubmission =
-    project.status === 'WAITING_ACCEPTANCE' &&
+    project.status === 'CLOSING_SUBMITTED' &&
     project.acceptanceDossier?.status === 'REVISION_REQUIRED';
 
   return firstSubmission || resubmission;
@@ -275,7 +253,7 @@ export function canSubmitChangeRequest(
     user.id === project.principalInvestigatorId &&
     (
       project.status === 'IN_PROGRESS' ||
-      project.status === 'SUSPENDED'
+      project.status === 'EXTENSION_REQUESTED'
     )
   );
 }

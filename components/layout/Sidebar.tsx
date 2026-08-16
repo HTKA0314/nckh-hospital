@@ -23,6 +23,7 @@ import {
   BookOpen,
   Users,
   ClipboardCheck,
+  DollarSign,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -56,6 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const isAdmin = role === 'ADMIN';
     const isDirector = role === 'DIRECTOR';
     const isCouncilMember = role === 'COUNCIL_MEMBER';
+    const isFinanceOfficer = role === 'FINANCE_OFFICER';
 
     const hasMyProjects = currentUser
       ? repo.getProjects().some(
@@ -70,7 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const showMyProjects = isResearcher || hasMyProjects;
 
     const canManageResearch =
-      isOffice || isAdmin || isDirector;
+      isOffice || isAdmin || isDirector || isFinanceOfficer;
 
     const groups: MenuGroup[] = [
       {
@@ -122,11 +124,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {
         groupTitle: 'XỬ LÝ NGHIỆP VỤ',
         items: [
-          {
-            title: 'Kiểm tra hồ sơ',
-            href: '/review',
-            icon: FileCheck2,
-          },
           {
             title: 'Quản lý Hội đồng KH&CN',
             href: '/councils',
@@ -345,16 +342,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             key={group.groupTitle}
             className="space-y-1"
           >
-            {!collapsed &&
-              group.groupTitle !== 'TỔNG QUAN' && (
-                <div
-                  className="px-3 text-[11px]
-                  font-bold tracking-wider
-                  text-slate-400 uppercase"
-                >
-                  {group.groupTitle}
-                </div>
-              )}
+
 
             <div className="space-y-0.5">
               {group.items.map((item) => {
@@ -415,7 +403,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     />
 
                     {!collapsed && (
-                      <span className="truncate flex-1">
+                      <span className="truncate flex-1 uppercase">
                         {item.title}
                       </span>
                     )}

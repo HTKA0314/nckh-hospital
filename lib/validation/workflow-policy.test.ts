@@ -175,7 +175,7 @@ function runTests(): void {
   // Dù Hội đồng có thể tích hợp về tổ chức, EthicsStatus vẫn là nguồn sự thật.
   const integratedPendingProject: ResearchProject = {
     ...baseProject,
-    status: 'WAITING_ASSIGNMENT',
+    status: 'APPROVED_PENDING_CONTRACT',
     proposalStatus: 'PROPOSAL_APPROVED',
     ethicsStatus: 'DOSSIER_SUBMITTED',
     documents: [

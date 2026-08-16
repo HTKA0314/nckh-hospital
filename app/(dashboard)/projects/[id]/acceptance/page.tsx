@@ -152,7 +152,7 @@ export default function ProjectAcceptancePage({
 
   const canResubmitAcceptanceDossier =
     canSubmitAcceptanceDossier(currentUser) &&
-    project.status === 'WAITING_ACCEPTANCE' &&
+    project.status === 'CLOSING_SUBMITTED' &&
     dossier?.status === 'REVISION_REQUIRED';
 
   const canReview = canReviewAcceptanceDossier(currentUser);
@@ -204,7 +204,7 @@ export default function ProjectAcceptancePage({
 
     const isFirstSubmission = project.status === 'IN_PROGRESS' && !dossier;
     const isValidResubmission =
-      project.status === 'WAITING_ACCEPTANCE' &&
+      project.status === 'CLOSING_SUBMITTED' &&
       dossier?.status === 'REVISION_REQUIRED';
 
     if (!isFirstSubmission && !isValidResubmission) {
@@ -261,7 +261,7 @@ export default function ProjectAcceptancePage({
 
     const updatedProject = repo.updateProject(project.id, {
       acceptanceDossier: nextDossier,
-      status: 'WAITING_ACCEPTANCE',
+      status: 'CLOSING_SUBMITTED',
     });
 
     if (!updatedProject) {
@@ -617,7 +617,7 @@ export default function ProjectAcceptancePage({
             <div>
               <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Kết quả Hội đồng nghiệm thu</span>
               <div className="mt-1 text-sm font-bold text-slate-900">
-                {currentAcceptanceEvaluation.conclusion === 'ACCEPTED'
+                {currentAcceptanceEvaluation.conclusion === 'COMPLETED'
                   ? 'Đạt nghiệm thu'
                   : currentAcceptanceEvaluation.conclusion === 'CONDITIONALLY_ACCEPTED'
                     ? 'Đạt có điều kiện'

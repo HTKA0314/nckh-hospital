@@ -217,6 +217,11 @@ export default function ResubmitProjectPage() {
   const handleResubmit = (event: React.FormEvent) => {
     event.preventDefault();
 
+    if (!currentUser) {
+      error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      return;
+    }
+
     if (!revisionNotes.trim()) {
       warning('Vui lòng nhập văn bản giải trình tiếp thu ý kiến chỉnh sửa.');
       return;
@@ -379,7 +384,7 @@ export default function ResubmitProjectPage() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 pb-12 text-xs text-slate-800">
+    <div className="w-full space-y-4 pb-12 text-xs text-slate-800">
       {/* Breadcrumb Header */}
       <div className="flex items-center justify-between border-b border-slate-200/80 pb-3 select-none">
         <Link
@@ -401,7 +406,7 @@ export default function ResubmitProjectPage() {
           <span className="font-mono font-bold text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
             {project.projectCode || project.proposalCode}
           </span>
-          <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+          <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
             {pageTitle}
           </span>
         </div>
@@ -412,19 +417,18 @@ export default function ResubmitProjectPage() {
         </p>
       </div>
 
-      {/* Bố cục Split Layout (2 Cột) */}
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
-        {/* CỘT TRÁI (5 CỘT) */}
-        <div className="space-y-4 lg:col-span-5">
-          <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/60 p-4 shadow-2xs">
-              <h3 className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-900 select-none">
-                <MessageSquare className="h-4 w-4 text-amber-600" />
-                <span>Ý kiến phản hồi / Yêu cầu chỉnh sửa</span>
-              </h3>
-              <p className="rounded-lg border border-amber-200/80 bg-white p-3 font-medium leading-relaxed italic text-slate-700">
-                &ldquo;{latestFeedback}&rdquo;
-              </p>
-            </div>
+      {/* Danh sách các khối xếp dọc full-width */}
+      <div className="space-y-4 w-full">
+          {/* Ý kiến phản hồi / Yêu cầu chỉnh sửa */}
+          <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/80 p-4 shadow-2xs">
+            <h3 className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-800 select-none">
+              <MessageSquare className="h-4 w-4 text-slate-500" />
+              <span>Ý kiến phản hồi / Yêu cầu chỉnh sửa</span>
+            </h3>
+            <p className="rounded-lg border border-slate-200 bg-white p-3 font-medium leading-relaxed italic text-slate-700">
+              &ldquo;{latestFeedback}&rdquo;
+            </p>
+          </div>
 
           {/* Lịch sử nộp trước */}
           {submissionVersions.length > 0 && (
@@ -433,7 +437,7 @@ export default function ResubmitProjectPage() {
                 <History className="h-4 w-4 text-slate-500" />
                 <span>Lịch sử các bản nộp trước ({submissionVersions.length})</span>
               </h3>
-              <div className="max-h-[240px] space-y-2 overflow-y-auto pr-1">
+              <div className="max-h-[160px] space-y-2 overflow-y-auto pr-1">
                 {submissionVersions
                   .slice()
                   .reverse()
@@ -450,68 +454,7 @@ export default function ResubmitProjectPage() {
             </div>
           )}
 
-          {/* Sàng lọc Đạo đức Y sinh (IRB) chỉ áp dụng khi chỉnh sửa đề cương chuyên môn */}
-          {isCouncilRevision && (
-          <div className="space-y-2.5 rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
-            <h3 className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-800 select-none">
-              <ShieldAlert className="h-4 w-4 text-slate-500" />
-              <span>Sàng lọc Đạo đức Y sinh (IRB)</span>
-            </h3>
-            <div className="space-y-2 font-medium text-slate-700">
-              <label className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={involvesHumanSubjects}
-                  onChange={(e) => setInvolvesHumanSubjects(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <span>Nghiên cứu có can thiệp trực tiếp trên người bệnh</span>
-              </label>
-              <label className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={involvesIdentifiableData}
-                  onChange={(e) => setInvolvesIdentifiableData(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <span>Trích xuất hồ sơ bệnh án có dữ liệu định danh</span>
-              </label>
-              <label className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={involvesBiologicalSamples}
-                  onChange={(e) => setInvolvesBiologicalSamples(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <span>Nghiên cứu thu thập/sử dụng mẫu bệnh phẩm sinh học</span>
-              </label>
-              <label className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={involvesNewInterventions}
-                  onChange={(e) => setInvolvesNewInterventions(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <span>Thử nghiệm kỹ thuật mới, thuốc/thiết bị y tế mới</span>
-              </label>
-            </div>
-            <div className="pt-1">
-              <span
-                className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                  isEthicsRequired
-                    ? 'bg-amber-50 text-amber-800 border-amber-300'
-                    : 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                }`}
-              >
-                {isEthicsRequired ? 'Yêu cầu thẩm định Hội đồng Đạo đức (IRB)' : 'Không thuộc diện thẩm định Đạo đức'}
-              </span>
-            </div>
-          </div>
-          )}
-        </div>
-
-        {/* CỘT PHẢI (7 CỘT) */}
-        <div className="space-y-4 lg:col-span-7">
+          {/* Form nộp lại chính */}
           <form onSubmit={handleResubmit} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-2xs">
             <h3 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-900 select-none">
               Nội dung bổ sung & Tải tệp cập nhật
@@ -525,77 +468,136 @@ export default function ResubmitProjectPage() {
 
             {/* Văn bản giải trình tiếp thu */}
             <div className="space-y-1.5">
-                <label className="block font-bold text-slate-800">
-                  Văn bản Giải trình tiếp thu & Chỉnh sửa <span className="text-rose-600">*</span>
-                </label>
-                <textarea
-                  rows={4}
-                  required
-                  value={revisionNotes}
-                  onChange={(e) => setRevisionNotes(e.target.value)}
-                  placeholder="Ghi rõ chi tiết từng ý kiến góp ý, cách thức tiếp thu và vị trí chỉnh sửa trong tài liệu..."
-                  className="w-full resize-none rounded-lg border border-slate-300 p-3 font-medium text-xs leading-relaxed outline-none focus:border-[#0A6EBD]"
-                />
-              </div>
+              <label className="block font-bold text-slate-800">
+                Văn bản Giải trình tiếp thu & Chỉnh sửa <span className="text-rose-600">*</span>
+              </label>
+              <textarea
+                rows={4}
+                required
+                value={revisionNotes}
+                onChange={(e) => setRevisionNotes(e.target.value)}
+                placeholder="Ghi rõ chi tiết từng ý kiến góp ý, cách thức tiếp thu và vị trí chỉnh sửa trong tài liệu..."
+                className="w-full resize-none rounded-lg border border-slate-300 p-3 font-medium text-xs leading-relaxed outline-none focus:border-[#0A6EBD]"
+              />
+            </div>
 
             {/* Các trường nội dung cốt lõi chỉ chỉnh sửa khi Hội đồng yêu cầu sửa đề cương */}
             {isCouncilRevision && (
-            <div className="space-y-3 pt-1">
-              <div>
-                <label className="mb-1 block font-bold text-slate-800">Tính cấp thiết của đề tài</label>
-                <textarea
-                  rows={2}
-                  value={urgencyExplanation}
-                  onChange={(e) => setUrgencyExplanation(e.target.value)}
-                  placeholder="Nêu bật lý do cần thực hiện nghiên cứu..."
-                  className="w-full resize-none rounded-lg border border-slate-300 p-2 font-medium"
-                />
-              </div>
+              <div className="space-y-3 pt-1">
+                <div>
+                  <label className="mb-1 block font-bold text-slate-800">Tính cấp thiết của đề tài</label>
+                  <textarea
+                    rows={2}
+                    value={urgencyExplanation}
+                    onChange={(e) => setUrgencyExplanation(e.target.value)}
+                    placeholder="Nêu bật lý do cần thực hiện nghiên cứu..."
+                    className="w-full resize-none rounded-lg border border-slate-300 p-2 font-medium"
+                  />
+                </div>
 
-              <div>
-                <label className="mb-1 block font-bold text-slate-800">Mục tiêu nghiên cứu</label>
-                <textarea
-                  rows={2}
-                  value={expectedObjectives}
-                  onChange={(e) => setExpectedObjectives(e.target.value)}
-                  placeholder="Mục tiêu tổng quát và cụ thể..."
-                  className="w-full resize-none rounded-lg border border-slate-300 p-2 font-medium"
-                />
-              </div>
+                <div>
+                  <label className="mb-1 block font-bold text-slate-800">Mục tiêu nghiên cứu</label>
+                  <textarea
+                    rows={2}
+                    value={expectedObjectives}
+                    onChange={(e) => setExpectedObjectives(e.target.value)}
+                    placeholder="Mục tiêu tổng quát và cụ thể..."
+                    className="w-full resize-none rounded-lg border border-slate-300 p-2 font-medium"
+                  />
+                </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div>
-                  <label className="mb-1 block font-bold text-slate-800">Thiết kế nghiên cứu</label>
-                  <input
-                    type="text"
-                    value={researchDesign}
-                    onChange={(e) => setResearchDesign(e.target.value)}
-                    placeholder="Ví dụ: Mô tả cắt ngang"
-                    className="w-full rounded-lg border border-slate-300 p-2 font-medium"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block font-bold text-slate-800">Cỡ mẫu / Căn cứ ước tính</label>
-                  <input
-                    type="text"
-                    value={sampleSizeEstimation}
-                    onChange={(e) => setSampleSizeEstimation(e.target.value)}
-                    placeholder="Ví dụ: 220 người bệnh"
-                    className="w-full rounded-lg border border-slate-300 p-2 font-medium"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block font-bold text-slate-800">Dự toán kinh phí (VND)</label>
-                  <input
-                    type="number"
-                    step="1000000"
-                    value={estimatedBudget}
-                    onChange={(e) => setEstimatedBudget(Number(e.target.value))}
-                    className="w-full rounded-lg border border-slate-300 p-2 font-mono font-bold text-slate-900"
-                  />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block font-bold text-slate-800">Thiết kế nghiên cứu</label>
+                    <input
+                      type="text"
+                      value={researchDesign}
+                      onChange={(e) => setResearchDesign(e.target.value)}
+                      placeholder="Ví dụ: Mô tả cắt ngang"
+                      className="w-full rounded-lg border border-slate-300 p-2 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block font-bold text-slate-800">Cỡ mẫu / Căn cứ ước tính</label>
+                    <input
+                      type="text"
+                      value={sampleSizeEstimation}
+                      onChange={(e) => setSampleSizeEstimation(e.target.value)}
+                      placeholder="Ví dụ: 220 người bệnh"
+                      className="w-full rounded-lg border border-slate-300 p-2 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block font-bold text-slate-800">Dự toán kinh phí (VND)</label>
+                    <input
+                      type="number"
+                      step="1000000"
+                      value={estimatedBudget}
+                      onChange={(e) => setEstimatedBudget(Number(e.target.value))}
+                      className="w-full rounded-lg border border-slate-300 p-2 font-mono font-bold text-slate-900"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+
+            {/* Sàng lọc Đạo đức Y sinh (IRB) chỉ áp dụng khi chỉnh sửa đề cương chuyên môn */}
+            {isCouncilRevision && (
+              <div className="space-y-2.5 border-t border-slate-100 pt-3">
+                <h3 className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-800 select-none">
+                  <ShieldAlert className="h-4 w-4 text-slate-500" />
+                  <span>Sàng lọc Đạo đức Y sinh (IRB)</span>
+                </h3>
+                <div className="space-y-2 font-medium text-slate-700">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={involvesHumanSubjects}
+                      onChange={(e) => setInvolvesHumanSubjects(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span>Nghiên cứu có can thiệp trực tiếp trên người bệnh</span>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={involvesIdentifiableData}
+                      onChange={(e) => setInvolvesIdentifiableData(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span>Trích xuất hồ sơ bệnh án có dữ liệu định danh</span>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={involvesBiologicalSamples}
+                      onChange={(e) => setInvolvesBiologicalSamples(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span>Nghiên cứu thu thập/sử dụng mẫu bệnh phẩm sinh học</span>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={involvesNewInterventions}
+                      onChange={(e) => setInvolvesNewInterventions(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span>Thử nghiệm kỹ thuật mới, thuốc/thiết bị y tế mới</span>
+                  </label>
+                </div>
+                <div className="pt-1">
+                  <span
+                    className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                      isEthicsRequired
+                        ? 'bg-slate-100 text-slate-800 border-slate-300'
+                        : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                    }`}
+                  >
+                    {isEthicsRequired ? 'Yêu cầu thẩm định Hội đồng Đạo đức (IRB)' : 'Không thuộc diện thẩm định Đạo đức'}
+                  </span>
+                </div>
+              </div>
             )}
 
             {/* Khối Tải lên Tệp tin */}
@@ -675,6 +677,5 @@ export default function ResubmitProjectPage() {
           </form>
         </div>
       </div>
-    </div>
   );
 }

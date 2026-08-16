@@ -49,7 +49,7 @@ export function CreateDecisionModal({
           label: 'Đề cương đã được Hội đồng thông qua',
           passed:
             project.proposalStatus === 'PROPOSAL_APPROVED' &&
-            latestProposalEvaluation?.conclusion === 'APPROVED',
+            (!latestProposalEvaluation || latestProposalEvaluation.conclusion === 'APPROVED'),
         },
         {
           label: 'Đạo đức nghiên cứu đã được phê duyệt hoặc không áp dụng',
@@ -60,7 +60,7 @@ export function CreateDecisionModal({
         },
         {
           label: 'Đề tài đang chờ quyết định giao thực hiện',
-          passed: project.status === 'WAITING_ASSIGNMENT',
+          passed: project.status === 'APPROVED_PENDING_CONTRACT',
         },
       ];
     }
@@ -79,12 +79,13 @@ export function CreateDecisionModal({
       {
         label: 'Hội đồng nghiệm thu đã có kết luận đạt',
         passed:
-          latestAcceptanceEvaluation?.conclusion === 'ACCEPTED' ||
+          !latestAcceptanceEvaluation ||
+          latestAcceptanceEvaluation.conclusion === 'COMPLETED' ||
           conditionalRevisionCompleted,
       },
       {
         label: 'Đề tài đang ở trạng thái đã nghiệm thu',
-        passed: project.status === 'ACCEPTED',
+        passed: project.status === 'COMPLETED',
       },
     ];
   };

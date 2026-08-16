@@ -100,8 +100,8 @@ function requiresDirectorApproval(type: ChangeRequestType) {
 }
 
 function isProjectEligibleForRequest(project: ResearchProject, type: ChangeRequestType) {
-  if (type === 'RESUME') return project.status === 'SUSPENDED';
-  if (type === 'TERMINATION') return project.status === 'IN_PROGRESS' || project.status === 'SUSPENDED';
+  if (type === 'RESUME') return project.status === 'EXTENSION_REQUESTED';
+  if (type === 'TERMINATION') return project.status === 'IN_PROGRESS' || project.status === 'EXTENSION_REQUESTED';
   return project.status === 'IN_PROGRESS';
 }
 
@@ -132,7 +132,7 @@ function getRequestFieldConfig(project: ResearchProject, type: ChangeRequestType
     case 'CHANGE_PARTNER':
       return { fieldName: 'partner', currentValue: '', proposedValue: '' };
     case 'SUSPENSION':
-      return { fieldName: 'status', currentValue: project.status, proposedValue: 'SUSPENDED' };
+      return { fieldName: 'status', currentValue: project.status, proposedValue: 'EXTENSION_REQUESTED' };
     case 'RESUME':
       return { fieldName: 'status', currentValue: project.status, proposedValue: 'IN_PROGRESS' };
     case 'TERMINATION':
@@ -173,7 +173,7 @@ export default function ChangeRequestsPage() {
   const eligibleProjects = useMemo(() => {
     if (!currentUser) return [];
     return allProjects.filter((project) =>
-      ['IN_PROGRESS', 'SUSPENDED'].includes(project.status) &&
+      ['IN_PROGRESS', 'EXTENSION_REQUESTED'].includes(project.status) &&
       project.principalInvestigatorId === currentUser.id
     );
   }, [allProjects, currentUser]);
@@ -249,7 +249,7 @@ export default function ChangeRequestsPage() {
 
     const firstInProgress = eligibleProjects.find((project) => project.status === 'IN_PROGRESS');
     const firstProject = firstInProgress || eligibleProjects[0];
-    const initialType: ChangeRequestType = firstProject.status === 'SUSPENDED' ? 'RESUME' : 'EXTENSION';
+    const initialType: ChangeRequestType = firstProject.status === 'EXTENSION_REQUESTED' ? 'RESUME' : 'EXTENSION';
     const fieldConfig = getRequestFieldConfig(firstProject, initialType);
     setFormData({
       ...EMPTY_FORM,
@@ -494,7 +494,7 @@ export default function ChangeRequestsPage() {
     }
 
     if (request.type === 'SUSPENSION') {
-      repo.updateProject(project.id, { status: 'SUSPENDED' });
+      repo.updateProject(project.id, { status: 'EXTENSION_REQUESTED' });
       return;
     }
 

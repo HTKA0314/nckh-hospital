@@ -32,7 +32,7 @@ import {
 export default function ProgressWorkspacePage() {
   const { currentUser } = useAuth();
   const { success, warning, error, confirm } = useToast();
-  const projects = repo.getProjects().filter((p) => p.status === 'IN_PROGRESS' || p.status === 'ACCEPTED');
+  const projects = repo.getProjects().filter((p) => p.status === 'IN_PROGRESS' || p.status === 'COMPLETED');
 
   const [search, setSearch] = useState('');
   const [selectedDept, setSelectedDept] = useState('ALL');
@@ -146,7 +146,7 @@ export default function ProgressWorkspacePage() {
       <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-[13px]">
-            <thead className="bg-[#F8FAFC] border-b border-slate-200/80 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <thead className="bg-[#0B2A63] border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-white select-none">
               <tr>
                 <th className="px-4 py-3 w-28 whitespace-nowrap">MÃ ĐỀ TÀI</th>
                 <th className="px-4 py-3 min-w-[320px]">TÊN ĐỀ TÀI NGHIÊN CỨU</th>
@@ -211,7 +211,7 @@ export default function ProgressWorkspacePage() {
                           <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
                             <div
                               className={`h-full rounded-full transition-all ${
-                                p.status === 'ACCEPTED'
+                                p.status === 'COMPLETED'
                                   ? 'bg-emerald-500'
                                   : 'bg-[#0A6EBD]'
                               }`}
@@ -219,7 +219,7 @@ export default function ProgressWorkspacePage() {
                             />
                           </div>
                           <span className="font-mono font-bold text-xs text-slate-700 w-9 text-right">
-                            {p.status === 'ACCEPTED' ? '100%' : `${p.reportedProgressPercentage ?? 0}%`}
+                            {p.status === 'COMPLETED' ? '100%' : `${p.reportedProgressPercentage ?? 0}%`}
                           </span>
                         </div>
                       </td>
@@ -231,15 +231,15 @@ export default function ProgressWorkspacePage() {
                         </span>
                       </td>
 
-                      {/* Thao tác (Eye + Text) */}
+                      {/* Thao tác */}
                       <td className="px-4 py-3 text-center align-middle">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => setDetailProjectModal(p)}
-                            title="Xem mốc tiến độ & lịch sử báo cáo"
-                            className="p-1.5 bg-[#EBF4FC] hover:bg-[#D8ECF9] text-[#0A6EBD] rounded-lg border border-[#B8D7F5] transition shadow-2xs"
+                            title="Xem chi tiết tiến độ"
+                            className="inline-flex min-w-[80px] items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-900 cursor-pointer"
                           >
-                            <Eye className="w-4 h-4" />
+                            Chi tiết
                           </button>
                         </div>
                       </td>

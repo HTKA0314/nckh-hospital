@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { repo } from '@/lib/repository';
@@ -21,7 +21,7 @@ import {
   X,
 } from 'lucide-react';
 
-export default function RegisterProjectPage() {
+function RegisterProjectPageContent() {
   const router = useRouter();
   const { currentUser } = useAuth();
   const { success, warning, error } = useToast();
@@ -362,13 +362,13 @@ export default function RegisterProjectPage() {
   ];
 
   if (!isMounted) {
-    return <div className="p-8 text-center text-slate-500 text-xs">Đang tải biểu mẫu đăng ký...</div>;
+    return <div className="p-8 text-center text-slate-500 text-sm">Đang tải biểu mẫu đăng ký...</div>;
   }
 
   if (currentUser?.role !== 'RESEARCHER') {
     return (
       <div className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-xs">
-        <h1 className="text-base font-bold text-slate-900">Không có quyền đăng ký đề tài</h1>
+        <h1 className="text-lg font-bold text-slate-900">Không có quyền đăng ký đề tài</h1>
         <p className="mt-2 text-xs text-slate-500">Chức năng này chỉ dành cho tài khoản Nghiên cứu viên / Chủ nhiệm đề tài.</p>
         <Link
           href="/projects"
@@ -381,7 +381,7 @@ export default function RegisterProjectPage() {
   }
 
   return (
-    <div className="w-full space-y-4 pb-24 text-slate-800 text-xs">
+    <div className="w-full space-y-4 pb-24 text-slate-800 text-sm">
       {/* ── HEADER ── */}
       <div className="flex items-center gap-3.5 border-b border-slate-200 pb-3 select-none">
         <Link
@@ -392,7 +392,7 @@ export default function RegisterProjectPage() {
           <ArrowLeft className="w-4 h-4" />
         </Link>
         <div>
-          <h1 className="text-base font-bold text-slate-900">
+          <h1 className="text-lg font-bold text-slate-900">
             {editingProjectId ? 'Chỉnh sửa đề xuất đề tài' : 'Đăng ký đề xuất đề tài mới'}
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -416,20 +416,20 @@ export default function RegisterProjectPage() {
               >
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs border transition shrink-0 ${
                   isActive
-                    ? 'bg-sky-50 text-[#0A6EBD] border-[#0A6EBD] shadow-2xs'
+                    ? 'bg-slate-800 text-white border-slate-800 shadow-2xs'
                     : isCompleted
-                    ? 'bg-emerald-50 text-emerald-600 border-emerald-300'
+                    ? 'bg-slate-100 text-slate-800 border-slate-300'
                     : 'bg-slate-50 text-slate-400 border-slate-200'
                 }`}>
                   {isCompleted ? '✓' : stepItem.number}
                 </div>
                 <div>
-                  <span className={`text-[10px] block font-bold uppercase tracking-wider ${
-                    isActive ? 'text-[#0A6EBD]' : 'text-slate-400'
+                  <span className={`text-xs block font-bold uppercase tracking-wider ${
+                    isActive ? 'text-slate-800' : 'text-slate-400'
                   }`}>
                     Bước {stepItem.number}
                   </span>
-                  <span className={`text-xs font-bold block ${
+                  <span className={`text-sm font-bold block ${
                     isActive ? 'text-slate-900' : 'text-slate-600'
                   }`}>
                     {stepItem.label}
@@ -449,7 +449,7 @@ export default function RegisterProjectPage() {
       {currentStep === 1 && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden animate-in fade-in duration-150">
           <div className="bg-slate-50 px-5 py-3 border-b border-slate-200">
-            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
               I. Thông tin chung & Đợt đăng ký
             </h2>
           </div>
@@ -544,13 +544,13 @@ export default function RegisterProjectPage() {
         <div className="space-y-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="bg-slate-50 px-5 py-3 border-b border-slate-200 flex justify-between items-center">
-              <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
                 II. Thông tin Chủ nhiệm & Nhóm nghiên cứu
               </h2>
               <button
                 type="button"
                 onClick={() => setShowMemberModal(true)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-[#0A6EBD] bg-sky-50 border border-sky-200 rounded-lg hover:bg-[#0A6EBD] hover:text-white transition cursor-pointer"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-[#0A6EBD] bg-white border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-700 transition cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" /> Thêm thành viên
               </button>
@@ -588,7 +588,7 @@ export default function RegisterProjectPage() {
               {/* Bảng thành viên */}
               <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-[#0B2A63] text-white font-bold uppercase text-[11px]">
+                  <thead className="bg-[#0B2A63] text-white font-bold uppercase text-xs tracking-wider">
                     <tr>
                       <th className="px-3 py-2.5">Họ và tên</th>
                       <th className="px-3 py-2.5 text-center">Vai trò</th>
@@ -601,12 +601,12 @@ export default function RegisterProjectPage() {
                       <tr key={m.id} className="hover:bg-slate-50">
                         <td className="px-3 py-2.5">
                           <div className="font-bold text-slate-900">{m.fullName}</div>
-                          <div className="text-[10px] text-slate-500">{m.academicRank} • {m.unit}</div>
+                          <div className="text-xs text-slate-500">{m.academicRank} • {m.unit}</div>
                         </td>
                         <td className="px-3 py-2.5 text-center">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          <span className={`px-2 py-0.5 rounded text-xs font-bold ${
                             m.roleInProject === 'CHỦ_NHIỆM'
-                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              ? 'bg-slate-100 text-slate-800 border border-slate-200'
                               : 'bg-slate-100 text-slate-700'
                           }`}>
                             {m.roleInProject.replace(/_/g, ' ')}
@@ -620,7 +620,7 @@ export default function RegisterProjectPage() {
                             <button
                               type="button"
                               onClick={() => handleRemoveMember(m.id)}
-                              className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                              className="text-slate-400 hover:text-slate-900 cursor-pointer"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -636,10 +636,10 @@ export default function RegisterProjectPage() {
 
           {/* Upload Phiếu đề xuất */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-5 space-y-3">
-            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
               III. Tải lên Phiếu đề xuất (Mẫu BM1)
             </h2>
-            <label className="border-2 border-dashed border-slate-300 hover:border-[#0A6EBD] bg-slate-50/50 hover:bg-sky-50/10 rounded-xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition">
+            <label className="border-2 border-dashed border-slate-300 hover:border-[#0A6EBD] bg-slate-50/50 hover:bg-slate-50 rounded-xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition">
               <input
                 type="file"
                 accept=".pdf,.doc,.docx"
@@ -677,7 +677,7 @@ export default function RegisterProjectPage() {
       {currentStep === 3 && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden animate-in fade-in duration-150">
           <div className="bg-slate-50 px-5 py-3 border-b border-slate-200">
-            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
               IV. Dự toán kinh phí đề xuất
             </h2>
           </div>
@@ -763,7 +763,7 @@ export default function RegisterProjectPage() {
             <button
               type="button"
               onClick={() => setCurrentStep(currentStep + 1)}
-              className="px-5 py-2 rounded-lg bg-[#0A6EBD] hover:bg-[#085896] text-white font-bold shadow-2xs transition cursor-pointer"
+              className="px-5 py-2 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold shadow-2xs transition cursor-pointer"
             >
               Tiếp tục
             </button>
@@ -771,7 +771,7 @@ export default function RegisterProjectPage() {
             <button
               type="button"
               onClick={() => handleSaveOrSubmit('SUBMIT')}
-              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-2xs transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-slate-900 hover:bg-black text-white font-bold shadow-2xs transition cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4" /> Gửi đề xuất đề tài
             </button>
@@ -867,5 +867,13 @@ export default function RegisterProjectPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function RegisterProjectPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-slate-500 text-xs">Đang tải biểu mẫu đăng ký...</div>}>
+      <RegisterProjectPageContent />
+    </Suspense>
   );
 }

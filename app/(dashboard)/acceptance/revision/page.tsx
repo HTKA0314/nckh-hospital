@@ -26,7 +26,7 @@ export default function PostAcceptanceRevisionPage() {
 
   // Lọc các đề tài đã nghiệm thu chuyên môn đạt (ACCEPTED) nhưng cần sửa đổi hoàn thiện
   const baseProjects = allProjects.filter((p) => {
-    const isAccepted = p.status === 'ACCEPTED';
+    const isAccepted = p.status === 'COMPLETED';
     const hasRevisions = Boolean(
       p.acceptanceDossier?.postAcceptanceRevisions?.some((r) => r.status !== 'CONFIRMED')
     );

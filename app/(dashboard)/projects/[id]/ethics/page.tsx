@@ -116,7 +116,7 @@ export default function ProjectEthicsPage({ params }: { params: { id: string } }
   const isEthicsRequired = project.ethicsRequired;
   const isEthicsApproved = ethics?.status === 'ETHICS_APPROVED';
   const isBlockedForProgress = isEthicsRequired && !isEthicsApproved
-    && !['DRAFT', 'UNDER_REVIEW', 'REJECTED'].includes(project.status);
+    && !['DRAFT', 'UNDER_REVIEW', 'SCREENING_FAILED'].includes(project.status);
 
   const today = new Date();
   const expiryDate = ethics?.expiryDate ? new Date(ethics.expiryDate) : null;

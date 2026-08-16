@@ -3,7 +3,6 @@
 import React, { useState, Suspense } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
-import { Breadcrumb } from '@/components/layout/Breadcrumb';
 export default function DashboardLayout({
   children,
 }: {
@@ -29,11 +28,6 @@ export default function DashboardLayout({
 
         {/* Thùng chứa chính */}
         <main id="main-content" role="main" className="flex-1 mt-14 p-3.5 md:p-5 w-full max-w-[1800px] mx-auto space-y-3.5">
-          {/* Thanh Breadcrumb định vị vị trí */}
-          <Suspense fallback={<div className="h-5 bg-slate-200/50 rounded w-48 animate-pulse" />}>
-            <Breadcrumb />
-          </Suspense>
-
           {/* Nội dung các trang con (children) */}
           {children}
         </main>

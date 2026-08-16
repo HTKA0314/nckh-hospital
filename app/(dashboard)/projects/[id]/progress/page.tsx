@@ -86,7 +86,7 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
 
   const canManageProgress =
     currentUser.role === 'RESEARCH_OFFICE' &&
-    (project.status === 'IN_PROGRESS' || project.status === 'SUSPENDED');
+    (project.status === 'IN_PROGRESS' || project.status === 'EXTENSION_REQUESTED');
 
   const handleAddMilestone = (e: React.FormEvent) => {
     e.preventDefault();
@@ -285,7 +285,7 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
     success('Đã tiếp nhận báo cáo và chuyển sang trạng thái đang đánh giá.');
   };
 
-  const handleReviewReport = (status: 'APPROVED' | 'REVISION_REQUIRED' | 'REJECTED') => {
+  const handleReviewReport = (status: 'APPROVED' | 'REVISION_REQUIRED' | 'SCREENING_FAILED') => {
     if (!selectedReport || !canManageProgress || selectedReport.status !== 'UNDER_REVIEW') return;
 
     if (status !== 'APPROVED' && !reviewComment.trim()) {
@@ -294,8 +294,8 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
     }
 
     confirm({
-      title: status === 'APPROVED' ? 'Duyệt báo cáo tiến độ' : status === 'REJECTED' ? 'Từ chối báo cáo tiến độ' : 'Yêu cầu sửa đổi báo cáo',
-      message: `Bạn chắc chắn muốn đánh giá báo cáo này là "${status === 'APPROVED' ? 'Đạt' : status === 'REJECTED' ? 'Không đạt' : 'Cần sửa đổi'}"?`,
+      title: status === 'APPROVED' ? 'Duyệt báo cáo tiến độ' : status === 'SCREENING_FAILED' ? 'Từ chối báo cáo tiến độ' : 'Yêu cầu sửa đổi báo cáo',
+      message: `Bạn chắc chắn muốn đánh giá báo cáo này là "${status === 'APPROVED' ? 'Đạt' : status === 'SCREENING_FAILED' ? 'Không đạt' : 'Cần sửa đổi'}"?`,
       confirmLabel: 'Xác nhận',
       type: status === 'APPROVED' ? 'info' : 'danger',
       onConfirm: () => {
@@ -367,7 +367,7 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
         return <span className="bg-emerald-50 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-200">Đạt</span>;
       case 'REVISION_REQUIRED':
         return <span className="bg-rose-50 text-rose-800 text-[10px] font-bold px-2 py-0.5 rounded border border-rose-200">Cần sửa đổi</span>;
-      case 'REJECTED':
+      case 'SCREENING_FAILED':
         return <span className="bg-rose-100 text-rose-900 text-[10px] font-bold px-2 py-0.5 rounded border border-rose-300">Không đạt</span>;
     }
   };
@@ -762,7 +762,7 @@ export default function ProjectProgressPage({ params }: { params: { id: string }
               {selectedReport.status === 'UNDER_REVIEW' && canManageProgress && (
                 <>
                   <button
-                    onClick={() => handleReviewReport('REJECTED')}
+                    onClick={() => handleReviewReport('SCREENING_FAILED')}
                     className="px-3.5 py-2 text-xs font-bold text-white bg-rose-700 hover:bg-rose-800 rounded-lg cursor-pointer shadow-2xs transition"
                   >
                     Không đạt

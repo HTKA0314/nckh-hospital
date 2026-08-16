@@ -23,35 +23,16 @@ type BadgeConfig = {
   className: string;
 };
 
-const DEFAULT_CLASS =
-  'bg-slate-100 text-slate-600 border-slate-200';
-
-const BLUE =
-  'bg-blue-50 text-[#0A6EBD] border-blue-200';
-
-const SKY =
-  'bg-sky-50 text-sky-700 border-sky-200';
-
-const AMBER =
-  'bg-amber-50 text-amber-800 border-amber-300';
-
-const EMERALD =
-  'bg-emerald-50 text-emerald-800 border-emerald-300';
-
-const ROSE =
-  'bg-rose-50 text-rose-700 border-rose-300';
-
-const RED =
-  'bg-red-50 text-red-700 border-red-200';
-
-const VIOLET =
-  'bg-violet-50 text-violet-700 border-violet-200';
-
-const TEAL =
-  'bg-teal-50 text-teal-800 border-teal-300';
-
-const SLATE =
-  'bg-slate-100 text-slate-700 border-slate-300';
+const DEFAULT_CLASS = 'bg-slate-400';
+const BLUE = 'bg-[#0A6EBD]';
+const SKY = 'bg-sky-500';
+const AMBER = 'bg-amber-500';
+const EMERALD = 'bg-emerald-500';
+const ROSE = 'bg-rose-500';
+const RED = 'bg-red-500';
+const VIOLET = 'bg-violet-500';
+const TEAL = 'bg-teal-500';
+const SLATE = 'bg-slate-400';
 
 const PROJECT_STATUS_MAP: Record<string, BadgeConfig> = {
   DRAFT: {
@@ -405,7 +386,7 @@ export const StatusBadge: React.FC<BadgeProps> = ({
   if (!status) {
     return (
       <span
-        className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] border ${DEFAULT_CLASS}`}
+        className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-semibold border border-slate-200 bg-slate-50 text-slate-600"
       >
         —
       </span>
@@ -421,9 +402,9 @@ export const StatusBadge: React.FC<BadgeProps> = ({
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold border whitespace-nowrap ${config.className}`}
+      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold border border-slate-200 bg-slate-50/60 text-slate-700 whitespace-nowrap"
     >
-      <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />
+      <span className={`w-1.5 h-1.5 rounded-full ${config.className} shrink-0`} />
       {config.label}
     </span>
   );

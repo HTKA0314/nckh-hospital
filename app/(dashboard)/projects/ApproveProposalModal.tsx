@@ -66,7 +66,7 @@ export function ApproveProposalModal({
           proposalStatus: 'PROPOSAL_APPROVED',
           status: project?.ethicsRequired && project?.ethicsStatus !== 'ETHICS_APPROVED'
             ? project.status
-            : 'WAITING_ASSIGNMENT', // Sẵn sàng để lập Quyết định giao thực hiện
+            : 'APPROVED_PENDING_CONTRACT', // Sẵn sàng để lập Quyết định giao thực hiện
           updatedAt: now,
         });
 

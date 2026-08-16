@@ -202,7 +202,7 @@ function CouncilsContent() {
 
       // Nghiệm thu chỉ nhận đề tài đã được Phòng NCKH xác nhận đủ điều kiện nghiệm thu.
       return (
-        project.status === 'WAITING_ACCEPTANCE' &&
+        project.status === 'CLOSING_SUBMITTED' &&
         (project.acceptanceDossier?.status === 'ELIGIBLE_FOR_ACCEPTANCE' ||
           (Boolean(editingCouncilId) && formData.selectedProjectIds.includes(project.id)))
       );
@@ -746,7 +746,7 @@ function CouncilsContent() {
 
                       {/* Trạng thái */}
                       <td className="px-4 py-3.5 align-middle text-center">
-                        <StatusBadge status={council.status} />
+                        <StatusBadge status={council.status} type="COUNCIL" />
                       </td>
 
                       {/* Thao tác */}

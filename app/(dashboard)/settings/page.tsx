@@ -181,7 +181,7 @@ export default function SettingsPage() {
 
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-600 font-semibold select-none">
+              <thead className="bg-[#0B2A63] border-b border-slate-200 text-white font-bold uppercase tracking-wider text-[11px] select-none">
                 <tr>
                   <th className="p-2.5 w-12 text-center">STT</th>
                   <th className="p-2.5 w-36">Mã định danh</th>
@@ -269,7 +269,7 @@ export default function SettingsPage() {
           </div>
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-600 font-semibold select-none">
+              <thead className="bg-[#0B2A63] border-b border-slate-200 text-white font-bold uppercase tracking-wider text-[11px] select-none">
                 <tr>
                   <th className="p-2.5 w-12 text-center">STT</th>
                   <th className="p-2.5 w-24">Mã</th>

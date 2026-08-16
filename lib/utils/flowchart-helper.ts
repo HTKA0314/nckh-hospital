@@ -102,7 +102,7 @@ function resolveWorkflowStep(
   }
 
   if (
-    projectStatus === 'WAITING_ASSIGNMENT' ||
+    projectStatus === 'APPROVED_PENDING_CONTRACT' ||
     proposalStatus === 'PROPOSAL_APPROVED'
   ) {
     const ethicsGateCompleted =
@@ -125,7 +125,7 @@ function resolveWorkflowStep(
       return 2;
 
     case 'IN_PROGRESS':
-    case 'SUSPENDED':
+    case 'EXTENSION_REQUESTED':
       /*
        * ProjectStatus hiện không có macro-state riêng cho "triển khai"
        * và "theo dõi tiến độ". Với một đề tài đã IN_PROGRESS,
@@ -133,32 +133,32 @@ function resolveWorkflowStep(
        */
       return 9;
 
-    case 'WAITING_ACCEPTANCE':
+    case 'CLOSING_SUBMITTED':
       return acceptanceDossierStatus === 'FORWARDED_TO_COUNCIL'
         ? 11
         : 10;
 
-    case 'ACCEPTED':
+    case 'COMPLETED':
       return hasPendingPostAcceptanceRevision ? 12 : 13;
 
-    case 'RECOGNIZED':
+    case 'COMPLETED':
       return 13;
 
-    case 'CLOSED':
-    case 'ARCHIVED':
+    case 'COMPLETED':
+    case 'COMPLETED':
       return 14;
 
     case 'TERMINATED':
       // Chấm dứt là kết quả của giai đoạn triển khai/điều chỉnh.
       return 9;
 
-    case 'REJECTED':
+    case 'SCREENING_FAILED':
       /*
        * Không đủ dữ liệu để xác định bị từ chối ở kiểm tra hành chính
        * hay Hội đồng. Nếu ProposalStatus đã REJECTED, coi đây là
        * kết thúc giai đoạn xét duyệt chuyên môn.
        */
-      return proposalStatus === 'REJECTED' ? 4 : 2;
+      return proposalStatus === 'SCREENING_FAILED' ? 4 : 2;
 
     default:
       return 1;

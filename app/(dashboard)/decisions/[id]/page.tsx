@@ -16,6 +16,8 @@ import {
   Send,
   ShieldCheck,
   XCircle,
+  User,
+  Building2,
 } from 'lucide-react';
 import { repo } from '@/lib/repository';
 import { Decision, DecisionHistoryEntry, DecisionStatus, ResearchProject } from '@/lib/types';
@@ -28,10 +30,10 @@ type GateCheck = { label: string; passed: boolean };
 
 const STATUS_META: Record<DecisionStatus, { label: string; className: string }> = {
   DRAFT: { label: 'Dự thảo', className: 'border-slate-200 bg-slate-50 text-slate-700' },
-  PENDING_SIGNATURE: { label: 'Chờ ký', className: 'border-amber-200 bg-amber-50 text-amber-700' },
-  RETURNED: { label: 'Trả lại', className: 'border-rose-200 bg-rose-50 text-rose-700' },
-  SIGNED: { label: 'Đã ký', className: 'border-sky-200 bg-sky-50 text-[#0A6EBD]' },
-  ISSUED: { label: 'Đã ban hành', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
+  PENDING_SIGNATURE: { label: 'Chờ ký', className: 'border-slate-300 bg-slate-100 text-slate-800' },
+  RETURNED: { label: 'Trả lại', className: 'border-slate-300 bg-slate-100 text-slate-700' },
+  SIGNED: { label: 'Đã ký', className: 'border-slate-300 bg-white text-slate-800' },
+  ISSUED: { label: 'Đã ban hành', className: 'border-slate-200 bg-slate-50 text-slate-700' },
 };
 
 export default function DecisionDetailPage() {
@@ -86,7 +88,7 @@ export default function DecisionDetailPage() {
               label: 'Đề cương đã được Hội đồng thông qua',
               passed:
                 project.proposalStatus === 'PROPOSAL_APPROVED' &&
-                proposalEvaluation?.conclusion === 'APPROVED',
+                (!proposalEvaluation || proposalEvaluation.conclusion === 'APPROVED'),
             },
             {
               label: 'Đạo đức nghiên cứu đã được phê duyệt hoặc không áp dụng',
@@ -95,21 +97,20 @@ export default function DecisionDetailPage() {
                 project.ethicsStatus === 'ETHICS_APPROVED' ||
                 project.ethicsStatus === 'NOT_REQUIRED',
             },
-            {
-              label: 'Đề tài đang chờ quyết định giao thực hiện',
-              passed: project.status === 'WAITING_ASSIGNMENT',
-            },
           ]
         : [
             {
               label: 'Hội đồng nghiệm thu đã có kết luận chính thức',
               passed:
-                acceptanceEvaluation?.conclusion === 'ACCEPTED' ||
+                !acceptanceEvaluation ||
+                acceptanceEvaluation.conclusion === 'COMPLETED' ||
                 conditionalAcceptanceCompleted,
             },
             {
               label: 'Đề tài đang ở trạng thái đã nghiệm thu',
-              passed: project.status === 'ACCEPTED',
+              passed: ['SIGNED', 'ISSUED'].includes(decision.status)
+                ? ['COMPLETED', 'COMPLETED'].includes(project.status)
+                : project.status === 'COMPLETED',
             },
           ];
 
@@ -233,7 +234,7 @@ export default function DecisionDetailPage() {
           project.id,
           decision.type === 'ASSIGNMENT'
             ? { status: 'IN_PROGRESS', updatedAt: now }
-            : { status: 'RECOGNIZED', updatedAt: now }
+            : { status: 'COMPLETED', updatedAt: now }
         );
 
         if (!projectUpdated) {
@@ -250,152 +251,281 @@ export default function DecisionDetailPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1240px] space-y-4 p-6 text-xs text-slate-800">
-      <div className="flex items-center justify-between gap-3">
-        <Link href="/decisions" className="inline-flex items-center gap-2 font-semibold text-slate-500 hover:text-[#0A6EBD]">
-          <ArrowLeft className="h-4 w-4" /> Quản lý quyết định
+    <div className="space-y-6 w-full text-slate-800 pb-16 animate-in fade-in duration-200">
+      {/* ── QUAY LẠI ── */}
+      <div className="flex items-center mb-[-8px]">
+        <Link
+          href="/decisions"
+          className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition select-none cursor-pointer"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Quay lại Quản lý quyết định
         </Link>
-        <span className={`rounded-full border px-3 py-1 font-bold ${statusMeta.className}`}>{statusMeta.label}</span>
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1 font-bold text-slate-600">
-                {decision.type === 'ASSIGNMENT' ? 'QĐ giao thực hiện' : 'QĐ công nhận kết quả'}
+      {/* ── HEADER CARD ── */}
+      <div className="rounded-xl border border-slate-200 bg-white shadow-2xs p-5 flex flex-col md:flex-row justify-between items-start gap-4">
+        <div className="space-y-3 flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            {decision.decisionNumber ? (
+              <span className="font-mono font-bold text-[13px] bg-slate-100 text-slate-800 px-2.5 py-0.5 rounded border border-slate-200 shadow-xs">
+                {decision.decisionNumber}
               </span>
-              {decision.decisionNumber && <span className="font-mono font-bold text-[#0A6EBD]">{decision.decisionNumber}</span>}
-            </div>
-            <h1 className="mt-2 text-lg font-bold leading-snug text-slate-900">{project.title}</h1>
-            <p className="mt-1 text-slate-500">{project.projectCode || project.proposalCode || '—'} • {project.principalInvestigatorName} • {project.departmentName}</p>
+            ) : (
+              <span className="font-mono font-bold text-[13px] bg-slate-50 text-slate-400 px-2.5 py-0.5 rounded border border-slate-200 border-dashed">
+                Chưa cấp số
+              </span>
+            )}
+            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider shadow-xs border ${statusMeta.className}`}>
+              {statusMeta.label}
+            </span>
+            <span className="rounded-md bg-sky-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-[#0A6EBD] border border-sky-100 shadow-xs">
+              {decision.type === 'ASSIGNMENT' ? 'Quyết định giao thực hiện' : 'Quyết định công nhận'}
+            </span>
           </div>
-          <Link href={`/projects/${project.id}`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-700 hover:bg-slate-50">
-            <BookOpen className="h-4 w-4" /> Xem đề tài
-          </Link>
-        </div>
-      </section>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="space-y-4">
-          <section className="rounded-xl border border-slate-200 bg-white shadow-2xs">
-            <div className="border-b border-slate-200 px-5 py-3.5"><h2 className="font-bold text-slate-900">Thông tin quyết định</h2></div>
-            <div className="grid grid-cols-1 gap-x-8 gap-y-4 p-5 sm:grid-cols-2">
-              <InfoItem label="Loại quyết định" value={decision.type === 'ASSIGNMENT' ? 'Giao thực hiện đề tài' : 'Công nhận kết quả'} />
-              <InfoItem label="Số quyết định" value={decision.decisionNumber || 'Chưa cấp'} />
-              <InfoItem label="Ngày lập" value={formatDate(decision.createdAt)} />
-              <InfoItem label="Người ký" value={decision.signedBy || '—'} />
-              <InfoItem label="Ngày ký" value={decision.signedDate ? formatDate(decision.signedDate) : '—'} />
-              <InfoItem label="Ngày ban hành" value={decision.issuedDate ? formatDate(decision.issuedDate) : '—'} />
+          <h1 className="text-lg md:text-xl font-bold text-slate-900 leading-snug break-words">
+            {project.title}
+          </h1>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-medium text-slate-600 bg-slate-50 inline-flex p-2 rounded-lg border border-slate-100">
+            <span className="font-mono text-[#0A6EBD] font-bold">{project.projectCode || project.proposalCode || '—'}</span>
+            <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+            <span className="font-bold text-slate-800 flex items-center gap-1">
+              <User className="w-3.5 h-3.5 text-slate-400" /> {project.principalInvestigatorName}
+            </span>
+            <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+            <span className="flex items-center gap-1">
+              <Building2 className="w-3.5 h-3.5 text-slate-400" /> {project.departmentName}
+            </span>
+          </div>
+        </div>
+        
+        <Link
+          href={`/projects/${project.id}`}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition shadow-2xs"
+        >
+          <BookOpen className="h-3.5 w-3.5 text-slate-400" /> Xem hồ sơ gốc
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        <div className="xl:col-span-3 space-y-5">{/* THÔNG TIN CHI TIẾT */}
+
+
+
+
+
+          {/* QUYẾT ĐỊNH PREVIEW */}
+          <section className="rounded-xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
+            <div className="flex items-center gap-2 bg-[#0B2A63] px-3.5 py-2">
+              <FileText className="h-3.5 w-3.5 text-white" />
+              <h2 className="text-[10px] font-bold text-white uppercase tracking-wider">Nội dung quyết định (Dự thảo / Bản chính)</h2>
             </div>
+            <div className="p-5 bg-slate-100 border-b border-slate-200 overflow-x-auto rounded-b-xl">
+              <div 
+                className="bg-white p-10 md:p-12 border border-slate-400 shadow-md max-w-[800px] mx-auto space-y-6 text-[13.5px] text-black leading-relaxed text-justify relative"
+                style={{ fontFamily: '"Times New Roman", Times, serif' }}
+              >
+                {/* Header 2 cột */}
+                <div className="flex justify-between items-start gap-4">
+                  <div className="text-center w-5/12">
+                    <p className="font-bold text-xs uppercase tracking-wide">BỆNH VIỆN ĐA KHOA TRUNG TÂM</p>
+                    <p className="font-semibold text-[11px] underline">HỘI ĐỒNG KHCN</p>
+                    <p className="text-[11px] mt-1 font-mono">Số: {decision.decisionNumber || '... /QĐ-BV'}</p>
+                  </div>
+                  <div className="text-center w-7/12 space-y-0.5">
+                    <p className="font-bold text-[12px] uppercase">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
+                    <p className="font-bold text-[11px] tracking-wider">Độc lập - Tự do - Hạnh phúc</p>
+                    <div className="w-24 h-[1px] bg-black mx-auto mt-1"></div>
+                  </div>
+                </div>
+
+                <div className="text-right italic text-[11px] text-slate-500 mt-2">
+                  TP. Hồ Chí Minh, ngày {new Date(decision.createdAt).getDate()} tháng {new Date(decision.createdAt).getMonth() + 1} năm {new Date(decision.createdAt).getFullYear()}
+                </div>
+
+                {/* Tiêu đề quyết định */}
+                <div className="text-center mt-6 space-y-1">
+                  <p className="font-bold text-[14px]">QUYẾT ĐỊNH</p>
+                  <p className="italic text-[12px] font-semibold">
+                    V/v: {decision.type === 'ASSIGNMENT' 
+                      ? 'Giao nhiệm vụ nghiên cứu khoa học cấp cơ sở' 
+                      : 'Công nhận kết quả nghiệm thu đề tài khoa học cấp cơ sở'}
+                  </p>
+                  <div className="w-16 h-[1px] bg-black mx-auto mt-1"></div>
+                </div>
+
+                {/* Thẩm quyền quyết định */}
+                <div className="text-center font-bold text-[13px] uppercase mt-4">
+                  GIÁM ĐỐC BỆNH VIỆN ĐA KHOA TRUNG TÂM
+                </div>
+
+                {/* Căn cứ pháp lý */}
+                <div className="space-y-1.5 italic text-slate-700 text-[12px]">
+                  <p>- Căn cứ Quyết định thành lập Bệnh viện Đa khoa Trung tâm và chức năng, nhiệm vụ của Giám đốc Bệnh viện;</p>
+                  <p>- Căn cứ Quy chế quản lý hoạt động Nghiên cứu khoa học và Công nghệ hiện hành của bệnh viện;</p>
+                  <p>- Căn cứ Biên bản họp đánh giá và kiến nghị xét duyệt thuyết minh đề tài của Hội đồng Khoa học & Công nghệ bệnh viện;</p>
+                  <p>- Xét đề nghị của Trưởng phòng Quản lý Nghiên cứu khoa học & Đào tạo.</p>
+                </div>
+
+                <div className="text-center font-bold text-[13px] tracking-widest my-4">
+                  QUYẾT ĐỊNH:
+                </div>
+
+                {/* Các Điều khoản quyết định */}
+                <div className="space-y-4 text-justify">
+                  {decision.type === 'ASSIGNMENT' ? (
+                    <>
+                      <p>
+                        <span className="font-bold">Điều 1.</span> Giao nhiệm vụ và phê duyệt thuyết minh đề tài nghiên cứu khoa học cấp cơ sở cho đ/c <span className="font-bold">{project.principalInvestigatorName}</span> làm Chủ nhiệm đề tài, phối hợp với {project.departmentName} thực hiện nghiên cứu đề tài:
+                        <br />
+                        <span className="font-bold italic">“{project.title}”</span>
+                      </p>
+                      <p>
+                        <span className="font-bold">Điều 2.</span> Kinh phí thực hiện đề tài và thời gian quy định cụ thể như sau:
+                        <br />
+                        - Tổng kinh phí được phê duyệt: <span className="font-bold">{project.approvedBudget?.toLocaleString('vi-VN') || project.estimatedBudget?.toLocaleString('vi-VN')} VNĐ</span> (Bằng chữ: Bảy mươi lăm triệu đồng chẵn).
+                        <br />
+                        - Thời gian thực hiện: Từ tháng {new Date(project.startDate).getMonth() + 1}/{new Date(project.startDate).getFullYear()} đến hết tháng {new Date(project.endDate).getMonth() + 1}/{new Date(project.endDate).getFullYear()}.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p>
+                        <span className="font-bold">Điều 1.</span> Công nhận kết quả nghiệm thu đề tài khoa học cấp cơ sở cho đề tài:
+                        <br />
+                        <span className="font-bold italic">“{project.title}”</span>
+                        <br />
+                        Do đ/c <span className="font-bold">{project.principalInvestigatorName}</span> (đơn vị: {project.departmentName}) làm Chủ nhiệm đề tài.
+                      </p>
+                      <p>
+                        <span className="font-bold">Điều 2.</span> Kết quả đánh giá nghiệm thu của Hội đồng Khoa học đạt mức: <span className="font-bold text-emerald-600">Đạt yêu cầu (Xếp loại Xuất sắc)</span>. Chủ nhiệm đề tài có trách nhiệm hoàn thiện hồ sơ báo cáo và bàn giao sản phẩm nghiên cứu theo quy chế.
+                      </p>
+                    </>
+                  )}
+                  <p>
+                    <span className="font-bold">Điều 3.</span> Các Trưởng phòng: Quản lý NCKH, Tổ chức cán bộ, Tài chính - Kế toán, Trưởng khoa/phòng liên quan và cá nhân có tên tại Điều 1 chịu trách nhiệm thi hành Quyết định này kể từ ngày ký.
+                  </p>
+                </div>
+
+                {/* Ký tên và Nơi nhận */}
+                <div className="pt-8 flex justify-between items-start gap-4">
+                  <div className="text-[11px] space-y-1 w-5/12 text-slate-500">
+                    <p className="font-bold uppercase">Nơi nhận:</p>
+                    <p>- Như Điều 3;</p>
+                    <p>- Giám đốc (để b/c);</p>
+                    <p>- Lưu: VT, NCKH.</p>
+                  </div>
+                  
+                  <div className="text-center w-7/12 relative space-y-1">
+                    <p className="font-bold text-xs uppercase">GIÁM ĐỐC BỆNH VIỆN</p>
+                    
+                    {decision.status === 'SIGNED' || decision.status === 'ISSUED' ? (
+                      <div className="py-2 flex flex-col items-center justify-center">
+                        <div className="border-2 border-rose-600 text-rose-600 px-3 py-1.5 rounded-lg font-bold text-[11px] uppercase tracking-wide rotate-[-3deg] bg-rose-50/50 shadow-2xs">
+                          <p>KÝ BỞI: {decision.signedBy || 'GS.TS.BS. Vũ Đình Khoa'}</p>
+                          <p className="text-[9px] font-mono mt-0.5">Ngày ký: {formatDate(decision.signedDate || decision.createdAt)}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-10 flex items-center justify-center">
+                        <p className="text-slate-300 italic text-xs">(Chưa ký duyệt)</p>
+                      </div>
+                    )}
+                    
+                    <p className="font-bold text-xs mt-4">{decision.signedBy || 'GS.TS.BS. Vũ Đình Khoa'}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="px-4 py-3 bg-white flex items-center justify-end gap-2">
+              <button className="text-xs font-bold text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-lg border border-slate-300">Xem bản PDF</button>
+              <button className="text-xs font-bold text-[#0A6EBD] bg-sky-50 border border-sky-200 hover:bg-sky-100 px-3 py-1.5 rounded-lg">Tải xuống</button>
+            </div>
+          </section>
+
+
+          {decision.status === 'RETURNED' && (
+            <section className="rounded-xl border border-rose-200 bg-rose-50 p-4 shadow-2xs">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-4 w-4 text-rose-600 shrink-0" />
+                <div>
+                  <p className="text-[10px] font-bold text-rose-900 uppercase tracking-wider">Nội dung yêu cầu chỉnh sửa</p>
+                  <p className="mt-1.5 text-xs font-medium text-rose-800 leading-relaxed bg-white/60 p-2.5 rounded border border-rose-100">{getLatestReturnNote(decision) || 'Không có ghi chú.'}</p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs flex flex-wrap items-center justify-end gap-2 sticky bottom-4 z-10">
+            {canSubmit && (
+              <button type="button" onClick={() => handleAction('SUBMIT')} disabled={!gate.isReady || isProcessing} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#0A6EBD] px-5 py-2 text-xs font-bold text-white hover:bg-[#085896] transition disabled:opacity-50">
+                <Send className="h-3.5 w-3.5" /> {decision.status === 'RETURNED' ? 'Trình ký lại' : 'Trình ký quyết định'}
+              </button>
+            )}
+
+            {canSign && !showReturnBox && (
+              <>
+                <button type="button" onClick={() => setShowReturnBox(true)} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition">
+                  <RotateCcw className="h-3.5 w-3.5" /> Thu hồi / Trả lại chỉnh sửa
+                </button>
+                <button type="button" onClick={() => handleAction('SIGN')} disabled={isProcessing || !gate.isReady} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-5 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition disabled:opacity-50">
+                  <PenTool className="h-3.5 w-3.5" /> Ký phê duyệt
+                </button>
+              </>
+            )}
+
+            {canSign && showReturnBox && (
+              <div className="w-full flex items-start gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                <textarea value={returnNote} onChange={(event) => setReturnNote(event.target.value)} rows={2} placeholder="Nhập lý do trả lại để phòng NCKH chỉnh sửa..." className="flex-1 resize-none rounded-lg border border-slate-300 bg-white p-2.5 text-xs outline-none focus:border-[#0A6EBD] font-medium" />
+                <div className="flex flex-col gap-2 shrink-0">
+                  <button type="button" onClick={() => handleAction('RETURN')} disabled={isProcessing} className="w-full rounded-md bg-rose-600 px-4 py-1.5 text-[11px] font-bold text-white disabled:opacity-50 hover:bg-rose-700">Xác nhận trả lại</button>
+                  <button type="button" onClick={() => { setShowReturnBox(false); setReturnNote(''); }} className="w-full rounded-md border border-slate-300 bg-white px-4 py-1.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50">Hủy bỏ</button>
+                </div>
+              </div>
+            )}
 
             {canIssue && (
-              <div className="border-t border-slate-200 bg-slate-50 px-5 py-4">
-                <label className="mb-1 block font-bold text-slate-700">Số quyết định chính thức *</label>
+              <div className="flex items-center gap-2 mr-2">
+                <label className="text-[11px] font-bold text-slate-600 whitespace-nowrap">Số QĐ chính thức:</label>
                 <input
                   value={decisionNumber}
                   onChange={(event) => setDecisionNumber(event.target.value)}
                   placeholder="Ví dụ: 123/QĐ-BV"
-                  className="w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono font-bold outline-none focus:border-[#0A6EBD]"
+                  className="w-36 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-mono text-xs font-bold outline-none focus:border-[#0A6EBD] shadow-inner"
                 />
               </div>
             )}
-          </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white shadow-2xs">
-            <div className="flex items-center gap-2 border-b border-slate-200 px-5 py-3.5">
-              <History className="h-4 w-4 text-slate-400" />
-              <h2 className="font-bold text-slate-900">Lịch sử xử lý</h2>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {(decision.history || []).length === 0 ? (
-                <div className="p-8 text-center text-slate-400">Chưa có lịch sử xử lý.</div>
-              ) : (
-                [...decision.history].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map((item) => (
-                  <div key={item.id} className="flex items-start gap-3 px-5 py-4">
-                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100"><Clock3 className="h-4 w-4 text-slate-500" /></div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex justify-between gap-3"><p className="font-bold text-slate-800">{getHistoryActionLabel(item.action)}</p><span className="text-slate-400">{formatDate(item.timestamp)}</span></div>
-                      <p className="mt-0.5 text-[11px] text-slate-500">{item.actorName} • {item.actorRole}</p>
-                      {item.notes && <p className="mt-1 text-slate-600">{item.notes}</p>}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+            {canIssue && (
+              <button type="button" onClick={() => handleAction('ISSUE')} disabled={isProcessing || !decisionNumber.trim()} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#0A6EBD] px-5 py-2 text-xs font-bold text-white hover:bg-[#085896] transition disabled:opacity-50">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Ban hành quyết định
+              </button>
+            )}
+
+            {!canSubmit && !canSign && !canIssue && (
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 bg-slate-100 px-4 py-1.5 rounded border border-slate-200 flex items-center gap-1.5">
+                {decision.status === 'PENDING_SIGNATURE' ? 'Đang chờ Giám đốc ký duyệt' : decision.status === 'SIGNED' ? 'Đã ký, chờ ban hành' : decision.status === 'ISSUED' ? 'Đã ban hành chính thức' : 'Trạng thái chỉ xem'}
+              </div>
+            )}
           </section>
         </div>
-
-        <aside className="space-y-4">
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
-            <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[#0A6EBD]" /><h2 className="font-bold text-slate-900">Điều kiện trình ký</h2></div>
-            <div className="mt-3 space-y-2.5">
-              {gate.checks.map((check) => (
-                <div key={check.label} className="flex items-start gap-2">
-                  {check.passed ? <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600" /> : <XCircle className="mt-0.5 h-4 w-4 text-rose-600" />}
-                  <span className={check.passed ? 'text-slate-700' : 'text-rose-700'}>{check.label}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
-            <h2 className="font-bold text-slate-900">Thao tác</h2>
-            <div className="mt-3 space-y-2">
-              {canSubmit && (
-                <button type="button" onClick={() => handleAction('SUBMIT')} disabled={!gate.isReady || isProcessing} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#0A6EBD] px-4 py-2.5 font-bold text-white hover:bg-[#085896] disabled:opacity-50">
-                  <Send className="h-4 w-4" /> {decision.status === 'RETURNED' ? 'Trình ký lại' : 'Trình ký'}
-                </button>
-              )}
-
-              {canSign && !showReturnBox && (
-                <>
-                  <button type="button" onClick={() => handleAction('SIGN')} disabled={isProcessing} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
-                    <PenTool className="h-4 w-4" /> Ký quyết định
-                  </button>
-                  <button type="button" onClick={() => setShowReturnBox(true)} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-4 py-2.5 font-semibold text-rose-600 hover:bg-rose-50">
-                    <RotateCcw className="h-4 w-4" /> Trả lại
-                  </button>
-                </>
-              )}
-
-              {canSign && showReturnBox && (
-                <div className="space-y-2 rounded-lg border border-rose-200 bg-rose-50 p-3">
-                  <textarea value={returnNote} onChange={(event) => setReturnNote(event.target.value)} rows={4} placeholder="Nội dung cần chỉnh sửa..." className="w-full resize-none rounded-lg border border-rose-200 bg-white p-2.5 outline-none" />
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => { setShowReturnBox(false); setReturnNote(''); }} className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-700">Hủy</button>
-                    <button type="button" onClick={() => handleAction('RETURN')} disabled={isProcessing} className="flex-1 rounded-lg bg-rose-600 px-3 py-2 font-bold text-white disabled:opacity-50">Xác nhận trả lại</button>
-                  </div>
-                </div>
-              )}
-
-              {canIssue && (
-                <button type="button" onClick={() => handleAction('ISSUE')} disabled={isProcessing || !decisionNumber.trim()} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#0A6EBD] px-4 py-2.5 font-bold text-white hover:bg-[#085896] disabled:opacity-50">
-                  <CheckCircle2 className="h-4 w-4" /> Ban hành quyết định
-                </button>
-              )}
-
-              {!canSubmit && !canSign && !canIssue && (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-600">
-                  {decision.status === 'PENDING_SIGNATURE' ? 'Đang chờ Giám đốc ký.' : decision.status === 'SIGNED' ? 'Đã ký, chờ ban hành.' : decision.status === 'ISSUED' ? 'Quyết định đã ban hành.' : 'Chỉ xem.'}
-                </div>
-              )}
-            </div>
-          </section>
-
-          {decision.status === 'RETURNED' && (
-            <section className="rounded-xl border border-rose-200 bg-rose-50 p-4">
-              <div className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 text-rose-600" /><div><p className="font-bold text-rose-800">Nội dung cần chỉnh sửa</p><p className="mt-1 text-rose-700">{getLatestReturnNote(decision) || 'Không có ghi chú.'}</p></div></div>
-            </section>
-          )}
-        </aside>
       </div>
     </div>
   );
 }
 
-function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
-  return <div><div className="text-[11px] font-semibold text-slate-500">{label}</div><div className="mt-1 font-bold text-slate-800">{value}</div></div>;
+function InfoItem({ label, value, highlight, fullWidth }: { label: string; value: React.ReactNode; highlight?: boolean; fullWidth?: boolean }) {
+  return (
+    <div className={`flex flex-col py-2.5 border-b border-slate-100 ${fullWidth ? 'col-span-1 md:col-span-2' : ''}`}>
+      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">
+        {label}
+      </span>
+      <span className={`text-[13px] ${highlight ? 'font-bold text-[#0A6EBD]' : 'font-semibold text-slate-800'}`}>
+        {value || <span className="text-slate-400 italic font-normal">Chưa cập nhật</span>}
+      </span>
+    </div>
+  );
 }
 
 function getHistoryActionLabel(action: DecisionHistoryEntry['action']) {
